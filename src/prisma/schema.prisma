@@ -112,6 +112,7 @@ model User {
   password  String
   role      UserRole @default(staff)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   inboundOrders  InboundOrder[]
@@ -121,12 +122,14 @@ model User {
 }
 
 model Customer {
-  id       Int     @id @default(autoincrement())
-  tenantId Int
-  name     String
-  contact  String?
-  phone    String?
-  address  String?
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  contact   String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   quotations  Quotation[]
@@ -136,12 +139,14 @@ model Customer {
 }
 
 model Supplier {
-  id       Int     @id @default(autoincrement())
-  tenantId Int
-  name     String
-  contact  String?
-  phone    String?
-  address  String?
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  contact   String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant          Tenant          @relation(fields: [tenantId], references: [id])
   purchaseOrders  PurchaseOrder[]
@@ -149,13 +154,15 @@ model Supplier {
   @@map("suppliers")
 }
 
-/// Category self-referential tree: parentId references Category.id
+/// Category self-referential tree
 model Category {
   id            Int      @id @default(autoincrement())
   tenantId      Int
   name          String
   parentId      Int?
   specTemplate  Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id])
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
@@ -173,6 +180,8 @@ model Product {
   description String?
   images      String[]
   tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   category Category @relation(fields: [categoryId], references: [id])
@@ -189,6 +198,8 @@ model Sku {
   attributes  Json?
   price       Decimal @db.Decimal(10, 2)
   stock       Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
   product Product @relation(fields: [productId], references: [id])
