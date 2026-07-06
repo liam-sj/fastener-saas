@@ -217,6 +217,8 @@ model Quotation {
   totalAmount Decimal          @db.Decimal(12, 2)
   status      QuotationStatus  @default(draft)
   validUntil  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
@@ -234,6 +236,8 @@ model Order {
   totalAmount Decimal     @db.Decimal(12, 2)
   paidAmount  Decimal     @default(0) @db.Decimal(12, 2)
   status      OrderStatus @default(pending)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
   quotation       Quotation?       @relation(fields: [quotationId], references: [id])
@@ -258,6 +262,8 @@ model OrderItem {
   deliveredQty    Int              @default(0)
   source          OrderItemSource  @default(stock)
   purchaseOrderId Int?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   tenant        Tenant          @relation(fields: [tenantId], references: [id])
   order         Order           @relation(fields: [orderId], references: [id])
@@ -276,6 +282,7 @@ model OrderRevision {
   beforeData  Json?
   afterData   Json?
   reason      String?
+  createdAt   DateTime     @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   order  Order  @relation(fields: [orderId], references: [id])
@@ -291,6 +298,8 @@ model PurchaseOrder {
   totalAmount   Decimal              @db.Decimal(12, 2)
   status        PurchaseOrderStatus  @default(pending)
   expectedDate  DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   tenant        Tenant              @relation(fields: [tenantId], references: [id])
   supplier      Supplier            @relation(fields: [supplierId], references: [id])
@@ -311,6 +320,8 @@ model PurchaseOrderItem {
   qty             Int
   receivedQty     Int      @default(0)
   unitPrice       Decimal  @db.Decimal(10, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant        Tenant        @relation(fields: [tenantId], references: [id])
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
@@ -326,6 +337,8 @@ model InboundOrder {
   items           Json
   status          InboundOrderStatus @default(pending)
   operatorId      Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   tenant        Tenant        @relation(fields: [tenantId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
@@ -342,6 +355,8 @@ model DeliveryOrder {
   logisticsCompany String?
   trackingNo       String?
   status           DeliveryOrderStatus  @default(pending)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   tenant Tenant        @relation(fields: [tenantId], references: [id])
   order  Order         @relation(fields: [orderId], references: [id])
@@ -351,11 +366,13 @@ model DeliveryOrder {
 }
 
 model DeliveryItem {
-  id              Int  @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   tenantId        Int
   deliveryOrderId Int
   orderItemId     Int
   qty             Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant        Tenant        @relation(fields: [tenantId], references: [id])
   deliveryOrder DeliveryOrder @relation(fields: [deliveryOrderId], references: [id])
@@ -372,6 +389,8 @@ model Settlement {
   amount      Decimal          @db.Decimal(10, 2)
   paidAt      DateTime?
   status      SettlementStatus @default(pending)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
   order     Order     @relation(fields: [orderId], references: [id])
