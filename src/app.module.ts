@@ -1,6 +1,7 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { Module } from '@nestjs/common';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
+import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
@@ -12,19 +13,14 @@ import { OrderModule } from './modules/order/order.module';
 import { PurchaseModule } from './modules/purchase/purchase.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettlementModule } from './modules/settlement/settlement.module';
-import { TenantMiddleware } from './common/middlewares/tenant.middleware';
-import { TenantContextService } from './common/services/tenant-context.service';
+import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TenantModule, UserModule, CustomerModule, SupplierModule, ProductModule, QuotationModule, OrderModule, PurchaseModule, InventoryModule, SettlementModule],
+  imports: [PrismaModule, CommonModule, AuthModule, TenantModule, UserModule, CustomerModule, SupplierModule, ProductModule, QuotationModule, OrderModule, PurchaseModule, InventoryModule, SettlementModule],
   providers: [
-    TenantContextService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*');
-  }
-}
+export class AppModule {}
