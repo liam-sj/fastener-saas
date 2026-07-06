@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../../generated/prisma"
@@ -10,4 +8,364 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum TenantStatus {
+  active
+  inactive
+}
+
+enum UserRole {
+  admin
+  manager
+  staff
+}
+
+enum QuotationStatus {
+  draft
+  sent
+  accepted
+  rejected
+}
+
+enum OrderStatus {
+  pending
+  partial_delivered
+  delivered
+  completed
+  cancelled
+}
+
+enum OrderItemSource {
+  stock
+  custom
+}
+
+enum RevisionType {
+  add
+  modify
+  remove
+}
+
+enum PurchaseOrderStatus {
+  pending
+  confirmed
+  partial_received
+  received
+}
+
+enum InboundOrderStatus {
+  pending
+  confirmed
+}
+
+enum DeliveryOrderStatus {
+  pending
+  shipped
+  signed
+}
+
+enum SettlementStatus {
+  pending
+  paid
+}
+
+// ============================================================
+// Models
+// ============================================================
+
+model Tenant {
+  id        Int          @id @default(autoincrement())
+  name      String
+  contact   String?
+  phone     String?
+  status    TenantStatus @default(active)
+  createdAt DateTime     @default(now())
+
+  users           User[]
+  customers       Customer[]
+  suppliers       Supplier[]
+  categories      Category[]
+  products        Product[]
+  skus            Sku[]
+  quotations      Quotation[]
+  orders          Order[]
+  orderItems      OrderItem[]
+  orderRevisions  OrderRevision[]
+  purchaseOrders  PurchaseOrder[]
+  purchaseOrderItems PurchaseOrderItem[]
+  inboundOrders   InboundOrder[]
+  deliveryOrders  DeliveryOrder[]
+  deliveryItems   DeliveryItem[]
+  settlements     Settlement[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  username  String
+  password  String
+  role      UserRole @default(staff)
+  createdAt DateTime @default(now())
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  inboundOrders  InboundOrder[]
+
+  @@unique([tenantId, username])
+  @@map("users")
+}
+
+model Customer {
+  id       Int     @id @default(autoincrement())
+  tenantId Int
+  name     String
+  contact  String?
+  phone    String?
+  address  String?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  quotations  Quotation[]
+  orders      Order[]
+
+  @@map("customers")
+}
+
+model Supplier {
+  id       Int     @id @default(autoincrement())
+  tenantId Int
+  name     String
+  contact  String?
+  phone    String?
+  address  String?
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  purchaseOrders  PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+/// Category self-referential tree: parentId references Category.id
+model Category {
+  id            Int      @id @default(autoincrement())
+  tenantId      Int
+  name          String
+  parentId      Int?
+  specTemplate  Json?
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int
+  categoryId  Int
+  name        String
+  description String?
+  images      String[]
+  tags        String[]
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+  skus     Sku[]
+
+  @@map("products")
+}
+
+model Sku {
+  id          Int     @id @default(autoincrement())
+  tenantId    Int
+  productId   Int
+  skuCode     String
+  attributes  Json?
+  price       Decimal @db.Decimal(10, 2)
+  stock       Int     @default(0)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, skuCode])
+  @@map("skus")
+}
+
+model Quotation {
+  id          Int              @id @default(autoincrement())
+  tenantId    Int
+  quotationNo String           @unique
+  customerId  Int
+  items       Json
+  totalAmount Decimal          @db.Decimal(12, 2)
+  status      QuotationStatus  @default(draft)
+  validUntil  DateTime?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+  orders   Order[]
+
+  @@map("quotations")
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  tenantId    Int
+  orderNo     String      @unique
+  quotationId Int?
+  customerId  Int
+  totalAmount Decimal     @db.Decimal(12, 2)
+  paidAmount  Decimal     @default(0) @db.Decimal(12, 2)
+  status      OrderStatus @default(pending)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  quotation       Quotation?       @relation(fields: [quotationId], references: [id])
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  items           OrderItem[]
+  revisions       OrderRevision[]
+  deliveryOrders  DeliveryOrder[]
+  settlements     Settlement[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id              Int              @id @default(autoincrement())
+  tenantId        Int
+  orderId         Int
+  productName     String
+  skuCode         String
+  skuAttrs        Json?
+  price           Decimal          @db.Decimal(10, 2)
+  qty             Int
+  deliveredQty    Int              @default(0)
+  source          OrderItemSource  @default(stock)
+  purchaseOrderId Int?
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  order         Order           @relation(fields: [orderId], references: [id])
+  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  deliveryItems DeliveryItem[]
+  settlements   Settlement[]
+
+  @@map("order_items")
+}
+
+model OrderRevision {
+  id          Int          @id @default(autoincrement())
+  tenantId    Int
+  orderId     Int
+  type        RevisionType
+  beforeData  Json?
+  afterData   Json?
+  reason      String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  order  Order  @relation(fields: [orderId], references: [id])
+
+  @@map("order_revisions")
+}
+
+model PurchaseOrder {
+  id            Int                  @id @default(autoincrement())
+  tenantId      Int
+  purchaseNo    String               @unique
+  supplierId    Int
+  totalAmount   Decimal              @db.Decimal(12, 2)
+  status        PurchaseOrderStatus  @default(pending)
+  expectedDate  DateTime?
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  supplier      Supplier            @relation(fields: [supplierId], references: [id])
+  items         PurchaseOrderItem[]
+  orderItems    OrderItem[]
+  inboundOrders InboundOrder[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              Int      @id @default(autoincrement())
+  tenantId        Int
+  purchaseOrderId Int
+  productName     String
+  skuCode         String
+  skuAttrs        Json?
+  qty             Int
+  receivedQty     Int      @default(0)
+  unitPrice       Decimal  @db.Decimal(10, 2)
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model InboundOrder {
+  id              Int                @id @default(autoincrement())
+  tenantId        Int
+  inboundNo       String             @unique
+  purchaseOrderId Int?
+  items           Json
+  status          InboundOrderStatus @default(pending)
+  operatorId      Int?
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  operator      User?         @relation(fields: [operatorId], references: [id])
+
+  @@map("inbound_orders")
+}
+
+model DeliveryOrder {
+  id               Int                  @id @default(autoincrement())
+  tenantId         Int
+  deliveryNo       String               @unique
+  orderId          Int
+  logisticsCompany String?
+  trackingNo       String?
+  status           DeliveryOrderStatus  @default(pending)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id])
+  order  Order         @relation(fields: [orderId], references: [id])
+  items  DeliveryItem[]
+
+  @@map("delivery_orders")
+}
+
+model DeliveryItem {
+  id              Int  @id @default(autoincrement())
+  tenantId        Int
+  deliveryOrderId Int
+  orderItemId     Int
+  qty             Int
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  deliveryOrder DeliveryOrder @relation(fields: [deliveryOrderId], references: [id])
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id])
+
+  @@map("delivery_items")
+}
+
+model Settlement {
+  id          Int              @id @default(autoincrement())
+  tenantId    Int
+  orderId     Int
+  orderItemId Int
+  amount      Decimal          @db.Decimal(10, 2)
+  paidAt      DateTime?
+  status      SettlementStatus @default(pending)
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  order     Order     @relation(fields: [orderId], references: [id])
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@map("settlements")
 }
