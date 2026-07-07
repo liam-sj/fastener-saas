@@ -1,0 +1,49 @@
+# 生产环境部署配置
+# 使用方式：
+#   1. 修改下方 JWT_SECRET、POSTGRES_PASSWORD 为强随机值
+#   2. docker compose -f docker-compose.prod.yml up -d --build
+#   3. 首次部署后手动执行一次 seed：
+#      docker compose -f docker-compose.prod.yml exec app node dist/prisma/seed.js
+#
+# 与 docker-compose.yml 的区别：
+#   - PostgreSQL 不暴露 5432 到公网（仅容器内网可见）
+#   - 密码与 JWT 密钥使用强随机值（请自行替换）
+#   - 增加 restart 策略与内存限制
+#   - app 通过 entrypoint.sh 自动执行 migrate
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMeStrongPwd2026}
+      POSTGRES_DB: fastener_saas
+    # 生产环境不暴露端口到公网，仅容器内网访问
+    # ports:
+    #   - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: 'postgresql://postgres:${POSTGRES_PASSWORD:-ChangeMeStrongPwd2026}@postgres:5432/fastener_saas?schema=public'
+      JWT_SECRET: ${JWT_SECRET:-please-change-to-a-strong-random-secret}
+      PORT: '3000'
+      NODE_ENV: production
+    restart: unless-stopped
+    mem_limit: 1g
+
+volumes:
+  pgdata:
