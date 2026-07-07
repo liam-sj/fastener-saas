@@ -57,6 +57,7 @@ export class OrderService {
           create: items.map((item) => ({
             tenantId, productName: item.productName, skuCode: item.skuCode,
             skuAttrs: item.skuAttrs, price: item.price, qty: item.qty, source: item.source,
+            costPrice: item.costPrice,
           })),
         },
       },
@@ -94,6 +95,7 @@ export class OrderService {
           price: item.price,
           qty: item.qty,
           source,
+          costPrice: source === 'stock' ? Number(sku.costPrice) : undefined,
         };
       }),
     );
@@ -120,6 +122,8 @@ export class OrderService {
       });
     }
 
+    const costPrice = source === 'stock' ? Number(sku.costPrice) : undefined;
+
     const newItem = await this.db.orderItem.create({
       data: {
         tenantId, orderId,
@@ -127,6 +131,7 @@ export class OrderService {
         skuCode: sku.skuCode,
         skuAttrs: sku.attributes as any,
         price: dto.price, qty: dto.qty, source,
+        costPrice,
       },
     });
 
@@ -214,5 +219,68 @@ export class OrderService {
   async updateStatus(id: number, status: string) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     await this.db.order.updateMany({ where: { id, tenantId }, data: { status } as any });
+  }
+
+  async getProfit(orderId: number) {
+    const tenantId = this.tenantCtx.getTenantIdOrThrow();
+    const order = await this.db.order.findFirst({
+      where: { id: orderId, tenantId },
+      include: {
+        items: {
+          include: { purchaseOrder: { include: { items: true } } },
+        },
+      },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+
+    const itemBreakdown = order.items.map((item: any) => {
+      let costPrice = item.costPrice ? Number(item.costPrice) : null;
+
+      // 定制件回退到采购单条目单价
+      if (costPrice === null && item.source === 'custom' && item.purchaseOrder) {
+        const poItem = item.purchaseOrder.items.find(
+          (poi: any) => poi.skuCode === item.skuCode,
+        );
+        if (poItem) costPrice = Number(poItem.unitPrice);
+      }
+
+      const revenue = Number(item.price) * item.qty;
+      const cost = costPrice !== null ? costPrice * item.qty : 0;
+      const profit = revenue - cost;
+
+      return {
+        itemId: item.id,
+        productName: item.productName,
+        skuCode: item.skuCode,
+        source: item.source,
+        price: Number(item.price),
+        qty: item.qty,
+        costPrice,
+        revenue: Math.round(revenue * 100) / 100,
+        cost: Math.round(cost * 100) / 100,
+        profit: Math.round(profit * 100) / 100,
+        deliveredQty: item.deliveredQty,
+      };
+    });
+
+    const totalRevenue = Math.round(itemBreakdown.reduce((s, i) => s + i.revenue, 0) * 100) / 100;
+    const totalCost = Math.round(itemBreakdown.reduce((s, i) => s + i.cost, 0) * 100) / 100;
+    const totalProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
+    const profitMargin =
+      totalRevenue > 0
+        ? Math.round((totalProfit / totalRevenue) * 10000) / 100
+        : 0;
+
+    return {
+      orderId: order.id,
+      orderNo: order.orderNo,
+      status: order.status,
+      totalRevenue,
+      totalCost,
+      totalProfit,
+      profitMargin,
+      items: itemBreakdown,
+      unknownCostCount: itemBreakdown.filter((i) => i.costPrice === null).length,
+    };
   }
 }

@@ -15,6 +15,12 @@ export class OrderController {
   @Get()
   findAll(@Query() query: any) { return this.orderService.findAll(query); }
 
+  @ApiOperation({ summary: '订单利润' })
+  @Get(':id/profit')
+  getProfit(@Param('id', ParseIntPipe) id: number) {
+    return this.orderService.getProfit(id);
+  }
+
   @ApiOperation({ summary: '查询详情' })
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) { return this.orderService.findOne(id); }

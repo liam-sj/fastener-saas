@@ -184,6 +184,7 @@ async function main() {
             skuCode,
             attributes: spec.attrs,
             price: spec.price,
+            costPrice: Math.round(spec.price * 0.6 * 100) / 100,
             stock: 100 + Math.floor(Math.random() * 500), // 100-600
           },
         });

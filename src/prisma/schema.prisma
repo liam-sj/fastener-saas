@@ -97,7 +97,8 @@ model Tenant {
   orderRevisions  OrderRevision[]
   purchaseOrders  PurchaseOrder[]
   purchaseOrderItems PurchaseOrderItem[]
-  inboundOrders   InboundOrder[]
+  inboundOrders      InboundOrder[]
+  inboundOrderItems  InboundOrderItem[]
   deliveryOrders  DeliveryOrder[]
   deliveryItems   DeliveryItem[]
   settlements     Settlement[]
@@ -197,6 +198,7 @@ model Sku {
   skuCode     String
   attributes  Json?
   price       Decimal @db.Decimal(10, 2)
+  costPrice    Decimal  @default(0) @db.Decimal(10, 2)
   stock       Int     @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -261,6 +263,7 @@ model OrderItem {
   qty             Int
   deliveredQty    Int              @default(0)
   source          OrderItemSource  @default(stock)
+  costPrice       Decimal?         @db.Decimal(10, 2)
   purchaseOrderId Int?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -323,8 +326,9 @@ model PurchaseOrderItem {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  inboundOrderItems InboundOrderItem[]
 
   @@map("purchase_order_items")
 }
@@ -334,17 +338,36 @@ model InboundOrder {
   tenantId        Int
   inboundNo       String             @unique
   purchaseOrderId Int?
-  items           Json
   status          InboundOrderStatus @default(pending)
   operatorId      Int?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  operator      User?         @relation(fields: [operatorId], references: [id])
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  purchaseOrder PurchaseOrder?       @relation(fields: [purchaseOrderId], references: [id])
+  operator      User?               @relation(fields: [operatorId], references: [id])
+  items         InboundOrderItem[]
 
   @@map("inbound_orders")
+}
+
+model InboundOrderItem {
+  id                  Int      @id @default(autoincrement())
+  tenantId            Int
+  inboundOrderId      Int
+  purchaseOrderItemId Int?
+  skuCode             String
+  productName         String
+  skuAttrs            Json?
+  qty                 Int
+  unitCost            Decimal  @db.Decimal(10, 2)
+  createdAt           DateTime @default(now())
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  inboundOrder      InboundOrder       @relation(fields: [inboundOrderId], references: [id])
+  purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
+
+  @@map("inbound_order_items")
 }
 
 model DeliveryOrder {
