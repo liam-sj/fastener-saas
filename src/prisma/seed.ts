@@ -14,20 +14,25 @@ async function main() {
   console.log('🌱 开始种子数据...');
 
   // ────────────────────────────────────────
-  // 1. 创建默认租户 + 管理员
+  // 1. 创建默认租户 + 管理员（幂等：先查后建）
   // ────────────────────────────────────────
-  const tenant = await prisma.tenant.create({
-    data: {
-      name: '紧固件工厂',
-      contact: '李总',
-      phone: '13800001111',
-    },
-  });
+  let tenant = await prisma.tenant.findFirst({ where: { name: '紧固件工厂' } });
+  if (!tenant) {
+    tenant = await prisma.tenant.create({
+      data: {
+        name: '紧固件工厂',
+        contact: '李总',
+        phone: '13800001111',
+      },
+    });
+  }
   console.log(`✅ 租户: ${tenant.name}`);
 
   const hashedPassword = await bcrypt.hash('admin123', 10);
-  await prisma.user.create({
-    data: {
+  await prisma.user.upsert({
+    where: { tenantId_username: { tenantId: tenant.id, username: 'admin' } },
+    update: {},
+    create: {
       tenantId: tenant.id,
       username: 'admin',
       password: hashedPassword,
@@ -37,62 +42,73 @@ async function main() {
   console.log('✅ 管理员: admin / admin123');
 
   // ────────────────────────────────────────
-  // 2. 创建客户
+  // 2. 创建客户（幂等：按名称+租户查重）
   // ────────────────────────────────────────
-  const customers = await Promise.all([
-    prisma.customer.create({
-      data: {
-        tenantId: tenant.id,
-        name: '先锋机械制造有限公司',
-        contact: '王工',
-        phone: '13900001111',
-        address: '上海市浦东新区张江高科技园区',
-      },
-    }),
-    prisma.customer.create({
-      data: {
-        tenantId: tenant.id,
-        name: '恒达钢结构工程有限公司',
-        contact: '赵经理',
-        phone: '13900002222',
-        address: '江苏省苏州市工业园区',
-      },
-    }),
-    prisma.customer.create({
-      data: {
-        tenantId: tenant.id,
-        name: '远航汽车零部件有限公司',
-        contact: '钱工',
-        phone: '13900003333',
-        address: '浙江省宁波市北仑区',
-      },
-    }),
-  ]);
+  const customerData = [
+    {
+      name: '先锋机械制造有限公司',
+      contact: '王工',
+      phone: '13900001111',
+      address: '上海市浦东新区张江高科技园区',
+    },
+    {
+      name: '恒达钢结构工程有限公司',
+      contact: '赵经理',
+      phone: '13900002222',
+      address: '江苏省苏州市工业园区',
+    },
+    {
+      name: '远航汽车零部件有限公司',
+      contact: '钱工',
+      phone: '13900003333',
+      address: '浙江省宁波市北仑区',
+    },
+  ];
+
+  const customers: Array<{ id: number; name: string }> = [];
+  for (const c of customerData) {
+    let customer = await prisma.customer.findFirst({
+      where: { tenantId: tenant.id, name: c.name },
+    });
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: { tenantId: tenant.id, ...c },
+      });
+    }
+    customers.push(customer);
+  }
   console.log(`✅ 客户: ${customers.length} 个`);
 
   // ────────────────────────────────────────
-  // 3. 创建供应商
+  // 3. 创建供应商（幂等：按名称+租户查重）
   // ────────────────────────────────────────
-  const suppliers = await Promise.all([
-    prisma.supplier.create({
-      data: {
-        tenantId: tenant.id,
-        name: '宝钢钢材加工有限公司',
-        contact: '孙经理',
-        phone: '13800001112',
-        address: '上海市宝山区',
-      },
-    }),
-    prisma.supplier.create({
-      data: {
-        tenantId: tenant.id,
-        name: '精工五金制品有限公司',
-        contact: '李销售',
-        phone: '13800001113',
-        address: '广东省东莞市长安镇',
-      },
-    }),
-  ]);
+  const supplierData = [
+    {
+      name: '宝钢钢材加工有限公司',
+      contact: '孙经理',
+      phone: '13800001112',
+      address: '上海市宝山区',
+    },
+    {
+      name: '精工五金制品有限公司',
+      contact: '李销售',
+      phone: '13800001113',
+      address: '广东省东莞市长安镇',
+    },
+  ];
+
+  const suppliers: Array<{ id: number; name: string }> = [];
+  for (const s of supplierData) {
+    let supplier = await prisma.supplier.findFirst({
+      where: { tenantId: tenant.id, name: s.name },
+    });
+    if (!supplier) {
+      supplier = await prisma.supplier.create({
+        data: { tenantId: tenant.id, ...s },
+      });
+    }
+    suppliers.push(supplier);
+  }
   console.log(`✅ 供应商: ${suppliers.length} 个`);
 
   // ────────────────────────────────────────
@@ -132,13 +148,18 @@ async function main() {
   let totalSkus = 0;
 
   for (const catData of categoriesData) {
-    const category = await prisma.category.create({
-      data: {
-        tenantId: tenant.id,
-        name: catData.name,
-        specTemplate: catData.specTemplate,
-      },
+    let category = await prisma.category.findFirst({
+      where: { tenantId: tenant.id, name: catData.name },
     });
+    if (!category) {
+      category = await prisma.category.create({
+        data: {
+          tenantId: tenant.id,
+          name: catData.name,
+          specTemplate: catData.specTemplate,
+        },
+      });
+    }
 
     const abbrev = categoryAbbreviations[catData.name] || catData.name.substring(0, 3).toUpperCase();
 
@@ -146,16 +167,21 @@ async function main() {
     const productDefs = getProductDefs(catData.name);
 
     for (const pDef of productDefs) {
-      const product = await prisma.product.create({
-        data: {
-          tenantId: tenant.id,
-          categoryId: category.id,
-          name: pDef.name,
-          description: pDef.description,
-          images: [],
-          tags: pDef.tags || [],
-        },
+      let product = await prisma.product.findFirst({
+        where: { tenantId: tenant.id, categoryId: category.id, name: pDef.name },
       });
+      if (!product) {
+        product = await prisma.product.create({
+          data: {
+            tenantId: tenant.id,
+            categoryId: category.id,
+            name: pDef.name,
+            description: pDef.description,
+            images: [],
+            tags: pDef.tags || [],
+          },
+        });
+      }
 
       // 每个 SPU 4-6 个 SKU
       const skuCount = 4 + Math.floor(Math.random() * 3); // 4-6
@@ -177,8 +203,10 @@ async function main() {
           skuCode = `${skuCode}-${i + 1}`;
         }
 
-        await prisma.sku.create({
-          data: {
+        await prisma.sku.upsert({
+          where: { productId_skuCode: { productId: product.id, skuCode } },
+          update: {},
+          create: {
             tenantId: tenant.id,
             productId: product.id,
             skuCode,

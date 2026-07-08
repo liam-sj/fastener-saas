@@ -15,7 +15,7 @@ export class DeliveryService {
   async findAll(query: { page?: number; pageSize?: number; orderId?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const { page = 1, pageSize = 20, orderId } = query;
-    const where: any = { tenantId };
+    const where: Record<string, unknown> = { tenantId };
     if (orderId) where.orderId = orderId;
 
     const [list, total] = await Promise.all([
@@ -68,31 +68,34 @@ export class DeliveryService {
 
   async ship(id: number, dto: ShipDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const delivery = await this.prisma.deliveryOrder.findFirst({
-      where: { id, tenantId },
-      include: { items: true },
-    });
-    if (!delivery) throw new NotFoundException('发货单不存在');
 
-    for (const item of delivery.items) {
-      await this.prisma.orderItem.update({
-        where: { id: item.orderItemId },
-        data: { deliveredQty: { increment: item.qty } },
+    return this.prisma.$transaction(async (tx) => {
+      const delivery = await tx.deliveryOrder.findFirst({
+        where: { id, tenantId },
+        include: { items: true },
       });
-    }
+      if (!delivery) throw new NotFoundException('发货单不存在');
 
-    await this.prisma.deliveryOrder.updateMany({
-      where: { id, tenantId },
-      data: { status: 'shipped', logisticsCompany: dto.logisticsCompany, trackingNo: dto.trackingNo },
-    });
+      for (const item of delivery.items) {
+        await tx.orderItem.updateMany({
+          where: { id: item.orderItemId },
+          data: { deliveredQty: { increment: item.qty } },
+        });
+      }
 
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: { orderId: delivery.orderId, tenantId },
-    });
-    const allDelivered = orderItems.every((i) => i.deliveredQty >= i.qty);
-    await this.prisma.order.updateMany({
-      where: { id: delivery.orderId },
-      data: { status: allDelivered ? 'delivered' : 'partial_delivered' },
+      await tx.deliveryOrder.updateMany({
+        where: { id, tenantId },
+        data: { status: 'shipped', logisticsCompany: dto.logisticsCompany, trackingNo: dto.trackingNo },
+      });
+
+      const orderItems = await tx.orderItem.findMany({
+        where: { orderId: delivery.orderId, tenantId },
+      });
+      const allDelivered = orderItems.every((i) => i.deliveredQty >= i.qty);
+      await tx.order.updateMany({
+        where: { id: delivery.orderId },
+        data: { status: allDelivered ? 'delivered' : 'partial_delivered' },
+      });
     });
   }
 

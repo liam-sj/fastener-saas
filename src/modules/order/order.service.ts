@@ -5,6 +5,7 @@ import { generateNo } from '../../common/utils/no-generator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class OrderService {
@@ -13,29 +14,27 @@ export class OrderService {
     private readonly tenantCtx: TenantContextService,
   ) {}
 
-  private get db(): any { return this.prisma; }
-
   async findAll(query: { page?: number; pageSize?: number; status?: string; customerId?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const { page = 1, pageSize = 20, status, customerId } = query;
-    const where: any = { tenantId };
+    const where: Record<string, unknown> = { tenantId };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
 
     const [list, total] = await Promise.all([
-      this.db.order.findMany({
+      this.prisma.order.findMany({
         where, include: { customer: true, items: true },
         skip: (page - 1) * pageSize, take: pageSize,
         orderBy: { createdAt: 'desc' as const },
       }),
-      this.db.order.count({ where }),
+      this.prisma.order.count({ where }),
     ]);
     return { list, total, page, pageSize };
   }
 
   async findOne(id: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const order = await this.db.order.findFirst({
+    const order = await this.prisma.order.findFirst({
       where: { id, tenantId },
       include: { customer: true, items: true, revisions: { orderBy: { createdAt: 'desc' as const } } },
     });
@@ -45,53 +44,57 @@ export class OrderService {
 
   async create(dto: CreateOrderDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const orderNo = await generateNo(this.prisma as any, 'SO', tenantId);
-    const items = await this.processItems(tenantId, dto.items);
-    const totalAmount = items.reduce((sum, i) => sum + Number(i.price) * i.qty, 0);
 
-    return this.db.order.create({
-      data: {
-        tenantId, orderNo, customerId: dto.customerId, quotationId: dto.quotationId,
-        totalAmount: Math.round(totalAmount * 100) / 100,
-        items: {
-          create: items.map((item) => ({
-            tenantId, productName: item.productName, skuCode: item.skuCode,
-            skuAttrs: item.skuAttrs, price: item.price, qty: item.qty, source: item.source,
-            costPrice: item.costPrice,
-          })),
+    return this.prisma.$transaction(async (tx) => {
+      const orderNo = await generateNo(tx as any, 'SO', tenantId);
+      const items = await this.processItems(tx, tenantId, dto.items);
+      const totalAmount = items.reduce(
+        (sum, i) => sum + Math.round(i.price * i.qty * 100),
+        0,
+      ) / 100;
+
+      return tx.order.create({
+        data: {
+          tenantId, orderNo, customerId: dto.customerId, quotationId: dto.quotationId,
+          totalAmount,
+          items: {
+            create: items.map((item) => ({
+              tenantId, productName: item.productName, skuCode: item.skuCode,
+              skuAttrs: item.skuAttrs ?? undefined, price: item.price, qty: item.qty, source: item.source,
+              costPrice: item.costPrice,
+            })) as any,
+          },
         },
-      },
-      include: { items: true },
+        include: { items: true },
+      });
     });
   }
 
   private async processItems(
+    tx: any,
     tenantId: number,
     items: { skuId: number; qty: number; price: number }[],
   ) {
     return Promise.all(
       items.map(async (item) => {
-        const sku = await this.db.sku.findFirst({
+        const sku = await tx.sku.findFirst({
           where: { id: item.skuId, tenantId },
           include: { product: true },
         });
         if (!sku) throw new BadRequestException(`SKU ${item.skuId} 不存在`);
 
-        let source: string;
-        if (sku.stock >= item.qty) {
-          source = 'stock';
-          await this.db.sku.update({
-            where: { id: sku.id },
-            data: { stock: sku.stock - item.qty },
-          });
-        } else {
-          source = 'custom';
-        }
+        // 原子扣减库存：stock >= qty 才扣，返回 count > 0 表示扣成功
+        const result = await tx.sku.updateMany({
+          where: { id: sku.id, stock: { gte: item.qty } },
+          data: { stock: { decrement: item.qty } },
+        });
+
+        const source = result.count > 0 ? 'stock' : 'custom';
 
         return {
           productName: sku.product.name,
           skuCode: sku.skuCode,
-          skuAttrs: sku.attributes as any,
+          skuAttrs: sku.attributes,
           price: item.price,
           qty: item.qty,
           source,
@@ -103,114 +106,123 @@ export class OrderService {
 
   async addItem(orderId: number, dto: AddItemDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const order = await this.findOne(orderId);
-    if (order.status === 'completed' || order.status === 'cancelled') {
-      throw new BadRequestException('订单已完成或已取消，无法变更');
-    }
 
-    const sku = await this.db.sku.findFirst({
-      where: { id: dto.skuId, tenantId },
-      include: { product: true },
-    });
-    if (!sku) throw new BadRequestException('SKU 不存在');
-
-    const source = sku.stock >= dto.qty ? 'stock' : 'custom';
-    if (source === 'stock') {
-      await this.db.sku.update({
-        where: { id: sku.id },
-        data: { stock: sku.stock - dto.qty },
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tenantId },
       });
-    }
+      if (!order) throw new NotFoundException('订单不存在');
+      if (order.status === 'completed' || order.status === 'cancelled') {
+        throw new BadRequestException('订单已完成或已取消，无法变更');
+      }
 
-    const costPrice = source === 'stock' ? Number(sku.costPrice) : undefined;
+      const sku = await tx.sku.findFirst({
+        where: { id: dto.skuId, tenantId },
+        include: { product: true },
+      });
+      if (!sku) throw new BadRequestException('SKU 不存在');
 
-    const newItem = await this.db.orderItem.create({
-      data: {
-        tenantId, orderId,
-        productName: sku.product.name,
-        skuCode: sku.skuCode,
-        skuAttrs: sku.attributes as any,
-        price: dto.price, qty: dto.qty, source,
-        costPrice,
-      },
+      // 原子扣减库存
+      const result = await tx.sku.updateMany({
+        where: { id: sku.id, stock: { gte: dto.qty } },
+        data: { stock: { decrement: dto.qty } },
+      });
+      const source = result.count > 0 ? 'stock' : 'custom';
+      const costPrice = source === 'stock' ? Number(sku.costPrice) : undefined;
+
+      const newItem = await tx.orderItem.create({
+        data: {
+          tenantId, orderId,
+          productName: sku.product.name,
+          skuCode: sku.skuCode,
+          skuAttrs: sku.attributes ?? undefined,
+          price: dto.price, qty: dto.qty, source,
+          costPrice,
+        } as any,
+      });
+
+      await tx.orderRevision.create({
+        data: {
+          tenantId, orderId, type: 'add',
+          afterData: { itemId: newItem.id, skuCode: sku.skuCode, qty: dto.qty, price: dto.price },
+        },
+      });
+
+      await this.recalculateTotalInTx(tx, tenantId, orderId);
+      return newItem;
     });
-
-    await this.db.orderRevision.create({
-      data: {
-        tenantId, orderId, type: 'add',
-        afterData: { itemId: newItem.id, skuCode: sku.skuCode, qty: dto.qty, price: dto.price },
-      },
-    });
-
-    await this.recalculateTotal(tenantId, orderId);
-    return newItem;
   }
 
   async updateItem(orderId: number, itemId: number, dto: UpdateItemDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const orderItem = await this.db.orderItem.findFirst({
-      where: { id: itemId, orderId, tenantId },
+
+    return this.prisma.$transaction(async (tx) => {
+      const orderItem = await tx.orderItem.findFirst({
+        where: { id: itemId, orderId, tenantId },
+      });
+      if (!orderItem) throw new NotFoundException('订单条目不存在');
+
+      const beforeData = { qty: orderItem.qty, price: Number(orderItem.price) };
+
+      await tx.orderItem.update({
+        where: { id: itemId },
+        data: {
+          ...(dto.qty !== undefined ? { qty: dto.qty } : {}),
+          ...(dto.price !== undefined ? { price: dto.price } : {}),
+        },
+      });
+
+      await tx.orderRevision.create({
+        data: {
+          tenantId, orderId, type: 'modify',
+          beforeData, afterData: { qty: dto.qty, price: dto.price }, reason: dto.reason,
+        },
+      });
+
+      await this.recalculateTotalInTx(tx, tenantId, orderId);
     });
-    if (!orderItem) throw new NotFoundException('订单条目不存在');
-
-    const beforeData = { qty: orderItem.qty, price: Number(orderItem.price) };
-
-    await this.db.orderItem.update({
-      where: { id: itemId },
-      data: {
-        ...(dto.qty !== undefined ? { qty: dto.qty } : {}),
-        ...(dto.price !== undefined ? { price: dto.price } : {}),
-      },
-    });
-
-    await this.db.orderRevision.create({
-      data: {
-        tenantId, orderId, type: 'modify',
-        beforeData, afterData: { qty: dto.qty, price: dto.price }, reason: dto.reason,
-      },
-    });
-
-    await this.recalculateTotal(tenantId, orderId);
   }
 
   async removeItem(orderId: number, itemId: number, reason?: string) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const orderItem = await this.db.orderItem.findFirst({
-      where: { id: itemId, orderId, tenantId },
-    });
-    if (!orderItem) throw new NotFoundException('订单条目不存在');
 
-    if (orderItem.source === 'stock') {
-      const sku = await this.db.sku.findFirst({
-        where: { skuCode: orderItem.skuCode, tenantId },
+    return this.prisma.$transaction(async (tx) => {
+      const orderItem = await tx.orderItem.findFirst({
+        where: { id: itemId, orderId, tenantId },
       });
-      if (sku) {
+      if (!orderItem) throw new NotFoundException('订单条目不存在');
+
+      if (orderItem.source === 'stock') {
         const unreleasedQty = orderItem.qty - orderItem.deliveredQty;
         if (unreleasedQty > 0) {
-          await this.db.sku.update({
-            where: { id: sku.id },
-            data: { stock: sku.stock + unreleasedQty },
+          // 原子还库存
+          await tx.sku.updateMany({
+            where: { skuCode: orderItem.skuCode, tenantId },
+            data: { stock: { increment: unreleasedQty } },
           });
         }
       }
-    }
 
-    await this.db.orderItem.delete({ where: { id: itemId } });
+      await tx.orderItem.delete({ where: { id: itemId } });
 
-    await this.db.orderRevision.create({
-      data: {
-        tenantId, orderId, type: 'remove',
-        beforeData: { itemId, skuCode: orderItem.skuCode, qty: orderItem.qty }, reason,
-      },
+      await tx.orderRevision.create({
+        data: {
+          tenantId, orderId, type: 'remove',
+          beforeData: { itemId, skuCode: orderItem.skuCode, qty: orderItem.qty }, reason,
+        },
+      });
+
+      await this.recalculateTotalInTx(tx, tenantId, orderId);
     });
-
-    await this.recalculateTotal(tenantId, orderId);
   }
 
-  private async recalculateTotal(tenantId: number, orderId: number) {
-    const items = await this.db.orderItem.findMany({ where: { orderId, tenantId } });
-    const total = items.reduce((sum, i) => sum + Number(i.price) * i.qty, 0);
-    await this.db.order.update({
+  private async recalculateTotalInTx(tx: any, tenantId: number, orderId: number) {
+    const items = await tx.orderItem.findMany({ where: { orderId, tenantId } });
+    const total = items.reduce(
+      (sum: number, i: any) => sum + Math.round(Number(i.price) * i.qty * 100),
+      0,
+    ) / 100;
+    await tx.order.update({
       where: { id: orderId },
       data: { totalAmount: Math.round(total * 100) / 100 },
     });
@@ -218,12 +230,15 @@ export class OrderService {
 
   async updateStatus(id: number, status: string) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    await this.db.order.updateMany({ where: { id, tenantId }, data: { status } as any });
+    await this.prisma.order.updateMany({
+      where: { id, tenantId },
+      data: { status: status as OrderStatus },
+    });
   }
 
   async getProfit(orderId: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const order = await this.db.order.findFirst({
+    const order = await this.prisma.order.findFirst({
       where: { id: orderId, tenantId },
       include: {
         items: {
@@ -233,13 +248,13 @@ export class OrderService {
     });
     if (!order) throw new NotFoundException('订单不存在');
 
-    const itemBreakdown = order.items.map((item: any) => {
+    const itemBreakdown = order.items.map((item) => {
       let costPrice = item.costPrice ? Number(item.costPrice) : null;
 
       // 定制件回退到采购单条目单价
       if (costPrice === null && item.source === 'custom' && item.purchaseOrder) {
         const poItem = item.purchaseOrder.items.find(
-          (poi: any) => poi.skuCode === item.skuCode,
+          (poi) => poi.skuCode === item.skuCode,
         );
         if (poItem) costPrice = Number(poItem.unitPrice);
       }

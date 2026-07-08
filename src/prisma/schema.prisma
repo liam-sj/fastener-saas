@@ -102,6 +102,7 @@ model Tenant {
   deliveryOrders  DeliveryOrder[]
   deliveryItems   DeliveryItem[]
   settlements     Settlement[]
+  sequences       Sequence[]
 
   @@map("tenants")
 }
@@ -207,6 +208,7 @@ model Sku {
   product Product @relation(fields: [productId], references: [id])
 
   @@unique([productId, skuCode])
+  @@index([tenantId, skuCode])
   @@map("skus")
 }
 
@@ -226,6 +228,7 @@ model Quotation {
   customer Customer @relation(fields: [customerId], references: [id])
   orders   Order[]
 
+  @@index([tenantId, createdAt])
   @@map("quotations")
 }
 
@@ -249,6 +252,9 @@ model Order {
   deliveryOrders  DeliveryOrder[]
   settlements     Settlement[]
 
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
   @@map("orders")
 }
 
@@ -274,6 +280,8 @@ model OrderItem {
   deliveryItems DeliveryItem[]
   settlements   Settlement[]
 
+  @@index([tenantId, orderId])
+  @@index([tenantId, skuCode])
   @@map("order_items")
 }
 
@@ -310,6 +318,8 @@ model PurchaseOrder {
   orderItems    OrderItem[]
   inboundOrders InboundOrder[]
 
+  @@index([tenantId, createdAt])
+  @@index([tenantId, supplierId])
   @@map("purchase_orders")
 }
 
@@ -348,6 +358,7 @@ model InboundOrder {
   operator      User?               @relation(fields: [operatorId], references: [id])
   items         InboundOrderItem[]
 
+  @@index([tenantId, createdAt])
   @@map("inbound_orders")
 }
 
@@ -385,6 +396,7 @@ model DeliveryOrder {
   order  Order         @relation(fields: [orderId], references: [id])
   items  DeliveryItem[]
 
+  @@index([tenantId, createdAt])
   @@map("delivery_orders")
 }
 
@@ -420,4 +432,17 @@ model Settlement {
   orderItem OrderItem @relation(fields: [orderItemId], references: [id])
 
   @@map("settlements")
+}
+
+model Sequence {
+  id       Int    @id @default(autoincrement())
+  tenantId Int
+  prefix   String
+  dateStr  String
+  seq      Int    @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, prefix, dateStr])
+  @@map("sequences")
 }

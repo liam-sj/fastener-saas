@@ -11,30 +11,26 @@ export class InboundService {
     private readonly tenantCtx: TenantContextService,
   ) {}
 
-  private get db(): any {
-    return this.prisma;
-  }
-
   async findAll(query: { page?: number; pageSize?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const { page = 1, pageSize = 20 } = query;
     const where = { tenantId };
     const [list, total] = await Promise.all([
-      this.db.inboundOrder.findMany({
+      this.prisma.inboundOrder.findMany({
         where,
         include: { purchaseOrder: true, items: true },
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { id: 'desc' as const },
       }),
-      this.db.inboundOrder.count({ where }),
+      this.prisma.inboundOrder.count({ where }),
     ]);
     return { list, total, page, pageSize };
   }
 
   async findOne(id: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const io = await this.db.inboundOrder.findFirst({
+    const io = await this.prisma.inboundOrder.findFirst({
       where: { id, tenantId },
       include: { items: true },
     });
@@ -45,9 +41,9 @@ export class InboundService {
   async create(dto: CreateInboundDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const userId = this.tenantCtx.getUserId() || 1;
-    const inboundNo = await generateNo(this.prisma as any, 'IN', tenantId);
+    const inboundNo = await generateNo(this.prisma, 'IN', tenantId);
 
-    return this.db.inboundOrder.create({
+    return this.prisma.inboundOrder.create({
       data: {
         tenantId,
         inboundNo,
@@ -71,77 +67,80 @@ export class InboundService {
 
   async confirm(id: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const inbound = await this.db.inboundOrder.findFirst({
-      where: { id, tenantId },
-      include: { items: true },
-    });
-    if (!inbound) throw new NotFoundException('入库单不存在');
-    if (inbound.status !== 'pending') throw new BadRequestException('仅待确认状态可入库');
 
-    for (const item of inbound.items) {
-      // 1. 更新采购单条目的已收数量
-      if (item.purchaseOrderItemId) {
-        const poItem = await this.db.purchaseOrderItem.findFirst({
-          where: { id: item.purchaseOrderItemId, tenantId },
-        });
-        if (poItem) {
-          await this.db.purchaseOrderItem.update({
-            where: { id: poItem.id },
-            data: { receivedQty: poItem.receivedQty + item.qty },
+    return this.prisma.$transaction(async (tx) => {
+      const inbound = await tx.inboundOrder.findFirst({
+        where: { id, tenantId },
+        include: { items: true },
+      });
+      if (!inbound) throw new NotFoundException('入库单不存在');
+      if (inbound.status !== 'pending') throw new BadRequestException('仅待确认状态可入库');
+
+      // 批量预查所有 SKU，避免 N+1
+      const skuCodes = inbound.items.map((i) => i.skuCode);
+      const skus = await tx.sku.findMany({
+        where: { tenantId, skuCode: { in: skuCodes } },
+      });
+      const skuMap = new Map(skus.map((s) => [s.skuCode, s]));
+
+      for (const item of inbound.items) {
+        // 1. 原子更新采购单条目的已收数量
+        if (item.purchaseOrderItemId) {
+          await tx.purchaseOrderItem.updateMany({
+            where: { id: item.purchaseOrderItemId, tenantId },
+            data: { receivedQty: { increment: item.qty } },
+          });
+        }
+
+        // 2. 加权平均更新 SKU 成本价和库存
+        const sku = skuMap.get(item.skuCode);
+        if (sku) {
+          const oldStock = sku.stock;
+          const oldCostPrice = Number(sku.costPrice);
+          const unitCost = Number(item.unitCost);
+          const newStock = oldStock + item.qty;
+          const newTotalValue = oldStock * oldCostPrice + item.qty * unitCost;
+          const newCostPrice =
+            newStock > 0 ? Math.round((newTotalValue / newStock) * 100) / 100 : 0;
+
+          await tx.sku.updateMany({
+            where: { id: sku.id },
+            data: { stock: { increment: item.qty }, costPrice: newCostPrice },
+          });
+        }
+
+        // 3. 回填定制件 OrderItem 的成本
+        if (inbound.purchaseOrderId) {
+          await tx.orderItem.updateMany({
+            where: {
+              tenantId,
+              purchaseOrderId: inbound.purchaseOrderId,
+              skuCode: item.skuCode,
+              source: 'custom',
+              costPrice: null,
+            },
+            data: { costPrice: item.unitCost },
           });
         }
       }
 
-      // 2. 加权平均更新 SKU 成本价
-      const sku = await this.db.sku.findFirst({
-        where: { skuCode: item.skuCode, tenantId },
+      // 4. 入库单状态改为已确认
+      await tx.inboundOrder.updateMany({
+        where: { id, tenantId },
+        data: { status: 'confirmed' },
       });
-      if (sku) {
-        const oldStock = sku.stock;
-        const oldCostPrice = Number(sku.costPrice);
-        const unitCost = Number(item.unitCost);
-        const newStock = oldStock + item.qty;
-        const newTotalValue = oldStock * oldCostPrice + item.qty * unitCost;
-        const newCostPrice =
-          newStock > 0 ? Math.round((newTotalValue / newStock) * 100) / 100 : 0;
 
-        await this.db.sku.update({
-          where: { id: sku.id },
-          data: { stock: newStock, costPrice: newCostPrice },
-        });
-      }
-
-      // 3. 回填定制件 OrderItem 的成本
+      // 5. 同步采购单状态
       if (inbound.purchaseOrderId) {
-        await this.db.orderItem.updateMany({
-          where: {
-            tenantId,
-            purchaseOrderId: inbound.purchaseOrderId,
-            skuCode: item.skuCode,
-            source: 'custom',
-            costPrice: null,
-          },
-          data: { costPrice: item.unitCost },
+        const allPoItems = await tx.purchaseOrderItem.findMany({
+          where: { purchaseOrderId: inbound.purchaseOrderId, tenantId },
+        });
+        const allReceived = allPoItems.every((i) => i.receivedQty >= i.qty);
+        await tx.purchaseOrder.updateMany({
+          where: { id: inbound.purchaseOrderId },
+          data: { status: allReceived ? 'received' : 'partial_received' },
         });
       }
-    }
-
-    // 4. 入库单状态改为已确认
-    await this.db.inboundOrder.updateMany({
-      where: { id, tenantId },
-      data: { status: 'confirmed' },
     });
-
-    // 5. 同步采购单状态
-    if (inbound.purchaseOrderId) {
-      const allPoItems = await this.db.purchaseOrderItem.findMany({
-        where: { purchaseOrderId: inbound.purchaseOrderId, tenantId },
-      });
-      const allReceived = allPoItems.every((i: any) => i.receivedQty >= i.qty);
-      await this.db.purchaseOrder.updateMany({
-        where: { id: inbound.purchaseOrderId },
-        data: { status: allReceived ? 'received' : 'partial_received' },
-      });
-    }
   }
 }

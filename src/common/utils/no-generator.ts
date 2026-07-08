@@ -1,13 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 
-const prefixMap: Record<string, { model: string; field: string }> = {
-  BJ: { model: 'quotation', field: 'quotationNo' },
-  SO: { model: 'order', field: 'orderNo' },
-  PO: { model: 'purchaseOrder', field: 'purchaseNo' },
-  IN: { model: 'inboundOrder', field: 'inboundNo' },
-  DO: { model: 'deliveryOrder', field: 'deliveryNo' },
-};
-
+/**
+ * 生成业务单号：{prefix}-{YYYYMMDD}-{3-digit-seq}
+ *
+ * 使用独立序列表 Sequence（行级锁）保证并发安全：
+ *  - 同一租户 + 同一前缀 + 同一天内，upsert + increment 原子的递增序号
+ *  - 不依赖外部锁/Redis，完全由数据库保证唯一性
+ */
 export async function generateNo(
   prisma: PrismaClient,
   prefix: string,
@@ -15,27 +14,17 @@ export async function generateNo(
 ): Promise<string> {
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-  const prefixWithDate = `${prefix}-${dateStr}-`;
 
-  const config = prefixMap[prefix];
-  if (!config) throw new Error(`Unknown prefix: ${prefix}`);
-
-  const model = (prisma as any)[config.model];
-  const records = await model.findMany({
-    where: {
-      tenantId,
-      [config.field]: { startsWith: prefixWithDate },
-    },
-    orderBy: { [config.field]: 'desc' },
-    take: 1,
+  const seq = await prisma.$transaction(async (tx) => {
+    const row = await (tx as any).sequence.upsert({
+      where: {
+        tenantId_prefix_dateStr: { tenantId, prefix, dateStr },
+      },
+      update: { seq: { increment: 1 } },
+      create: { tenantId, prefix, dateStr, seq: 1 },
+    });
+    return row.seq;
   });
 
-  let seq = 1;
-  if (records.length > 0) {
-    const lastNo: string = records[0][config.field];
-    const lastSeq = parseInt(lastNo.split('-').pop() || '0', 10);
-    seq = lastSeq + 1;
-  }
-
-  return `${prefixWithDate}${String(seq).padStart(3, '0')}`;
+  return `${prefix}-${dateStr}-${String(seq).padStart(3, '0')}`;
 }

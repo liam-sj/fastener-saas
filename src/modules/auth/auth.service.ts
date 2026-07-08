@@ -31,39 +31,27 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const users = await this.prisma.user.findMany({
-      where: { username: dto.username },
+    const user = await this.prisma.user.findFirst({
+      where: { tenantId: dto.tenantId, username: dto.username },
     });
 
-    if (users.length === 0) {
-      throw new UnauthorizedException('用户名或密码错误');
-    }
-
-    let matchedUser: typeof users[number] | null = null;
-    for (const user of users) {
-      if (await bcrypt.compare(dto.password, user.password)) {
-        matchedUser = user;
-        break;
-      }
-    }
-
-    if (!matchedUser) {
+    if (!user || !(await bcrypt.compare(dto.password, user.password))) {
       throw new UnauthorizedException('用户名或密码错误');
     }
 
     const payload = {
-      sub: matchedUser.id,
-      tenantId: matchedUser.tenantId,
-      role: matchedUser.role,
+      sub: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
     };
 
     return {
       accessToken: this.jwtService.sign(payload),
       user: {
-        id: matchedUser.id,
-        username: matchedUser.username,
-        role: matchedUser.role,
-        tenantId: matchedUser.tenantId,
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        tenantId: user.tenantId,
       },
     };
   }

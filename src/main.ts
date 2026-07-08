@@ -19,15 +19,17 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  // Swagger
-  const config = new DocumentBuilder()
-    .setTitle('紧固件 SaaS ERP')
-    .setDescription('报价 -> 订单 -> 采购 -> 入库 -> 发货 -> 对账 全链路 API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Swagger (生产环境默认关闭，可通过 SWAGGER_ENABLED=true 开启)
+  if (process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true') {
+    const config = new DocumentBuilder()
+      .setTitle('紧固件 SaaS ERP')
+      .setDescription('报价 -> 订单 -> 采购 -> 入库 -> 发货 -> 对账 全链路 API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   await app.listen(process.env.PORT ?? 3000);
 }
