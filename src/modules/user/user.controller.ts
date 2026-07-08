@@ -3,6 +3,7 @@ import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('用户')
@@ -20,14 +21,17 @@ export class UserController {
   findOne(@Param('id', ParseIntPipe) id: number) { return this.userService.findOne(id); }
 
   @ApiOperation({ summary: '创建' })
+  @Roles('admin')
   @Post()
   create(@Body() dto: CreateUserDto) { return this.userService.create(dto); }
 
   @ApiOperation({ summary: '更新' })
+  @Roles('admin')
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) { return this.userService.update(id, dto); }
 
   @ApiOperation({ summary: '删除' })
+  @Roles('admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) { return this.userService.remove(id); }
 }

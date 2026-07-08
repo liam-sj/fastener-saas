@@ -14,7 +14,8 @@ export class SupplierService {
 
   async findAll(query: QuerySupplierDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, keyword } = query;
+    const { page = 1, keyword } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
 
     const where: any = { tenantId };
     if (keyword) {

@@ -13,7 +13,8 @@ export class TenantService {
   ) {}
 
   async findAll(query: QueryTenantDto) {
-    const { page = 1, pageSize = 20, keyword } = query;
+    const { page = 1, keyword } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: any = {};
     if (keyword) where.name = { contains: keyword };
 

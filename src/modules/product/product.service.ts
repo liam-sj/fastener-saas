@@ -14,7 +14,8 @@ export class ProductService {
 
   async findAll(query: QueryProductDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, keyword, categoryId, tag } = query;
+    const { page = 1, keyword, categoryId, tag } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: any = { tenantId };
 
     if (categoryId) where.categoryId = categoryId;

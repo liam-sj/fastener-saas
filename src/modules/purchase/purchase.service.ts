@@ -14,7 +14,8 @@ export class PurchaseService {
 
   async findAll(query: { page?: number; pageSize?: number; status?: string; supplierId?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, status, supplierId } = query;
+    const { page = 1, status, supplierId } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: Record<string, unknown> = { tenantId };
     if (status) where.status = status;
     if (supplierId) where.supplierId = supplierId;
@@ -61,7 +62,7 @@ export class PurchaseService {
     });
   }
 
-  async generateFromOrder(orderId: number) {
+  async generateFromOrder(orderId: number, supplierId: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
 
     return this.prisma.$transaction(async (tx) => {
@@ -70,12 +71,18 @@ export class PurchaseService {
       });
       if (customItems.length === 0) throw new BadRequestException('没有需要采购的条目');
 
+      // Verify supplier exists
+      const supplier = await tx.supplier.findFirst({
+        where: { id: supplierId, tenantId },
+      });
+      if (!supplier) throw new BadRequestException('供应商不存在');
+
       const purchaseNo = await generateNo(tx as any, 'PO', tenantId);
       const totalAmount = customItems.reduce((sum, i) => sum + Number(i.price) * i.qty, 0);
 
       const po = await tx.purchaseOrder.create({
         data: {
-          tenantId, purchaseNo, supplierId: 1,
+          tenantId, purchaseNo, supplierId,
           totalAmount: Math.round(totalAmount * 100) / 100,
           items: {
             create: customItems.map((i) => ({
@@ -105,11 +112,29 @@ export class PurchaseService {
     });
   }
 
-  async updateStatus(id: number, status: string) {
+  private readonly PURCHASE_TRANSITIONS: Record<PurchaseOrderStatus, PurchaseOrderStatus[]> = {
+    pending: ['confirmed', 'cancelled'],
+    confirmed: ['partial_received', 'received', 'cancelled'],
+    partial_received: ['received', 'cancelled'],
+    received: [],
+    cancelled: [],
+  } as Record<PurchaseOrderStatus, PurchaseOrderStatus[]>;
+
+  async updateStatus(id: number, status: PurchaseOrderStatus) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id, tenantId },
+    });
+    if (!po) throw new NotFoundException('采购单不存在');
+
+    const allowed = this.PURCHASE_TRANSITIONS[po.status];
+    if (!allowed || !allowed.includes(status)) {
+      throw new BadRequestException(`采购单不能从 ${po.status} 转为 ${status}`);
+    }
+
     await this.prisma.purchaseOrder.updateMany({
       where: { id, tenantId },
-      data: { status: status as PurchaseOrderStatus },
+      data: { status },
     });
   }
 }

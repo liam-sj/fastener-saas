@@ -13,7 +13,8 @@ export class InboundService {
 
   async findAll(query: { page?: number; pageSize?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20 } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const page = query.page ?? 1;
     const where = { tenantId };
     const [list, total] = await Promise.all([
       this.prisma.inboundOrder.findMany({

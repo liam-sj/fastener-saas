@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Query, ParseIntPipe } from '@nestjs
 import { SettlementService } from './settlement.service';
 import { ReconcileDto } from './dto/reconcile.dto';
 import { QuerySummaryDto } from './dto/query-summary.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('对账')
@@ -23,6 +24,7 @@ export class SettlementController {
   }
 
   @ApiOperation({ summary: '确认收款' })
+  @Roles('admin', 'manager')
   @Post('reconcile')
   reconcile(@Body() dto: ReconcileDto) {
     return this.settlementService.reconcile(dto);

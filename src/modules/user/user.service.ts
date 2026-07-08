@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
@@ -15,7 +15,8 @@ export class UserService {
 
   async findAll(query: QueryUserDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, keyword, role } = query;
+    const { page = 1, keyword, role } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: any = { tenantId };
     if (keyword) where.username = { contains: keyword };
     if (role) where.role = role;
@@ -54,6 +55,13 @@ export class UserService {
 
   async update(id: number, dto: UpdateUserDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
+    const currentRole = this.tenantCtx.getRole();
+
+    // 非 admin 不能修改角色
+    if (dto.role && currentRole !== 'admin') {
+      throw new BadRequestException('仅管理员可修改角色');
+    }
+
     const data: any = { ...dto };
     if (dto.password) {
       data.password = await bcrypt.hash(dto.password, 10);

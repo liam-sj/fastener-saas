@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
+import { StockService } from '../inventory/stock.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
@@ -12,11 +13,13 @@ export class OrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantCtx: TenantContextService,
+    private readonly stockService: StockService,
   ) {}
 
   async findAll(query: { page?: number; pageSize?: number; status?: string; customerId?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, status, customerId } = query;
+    const { page = 1, status, customerId } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: Record<string, unknown> = { tenantId };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
@@ -47,7 +50,7 @@ export class OrderService {
 
     return this.prisma.$transaction(async (tx) => {
       const orderNo = await generateNo(tx as any, 'SO', tenantId);
-      const items = await this.processItems(tx, tenantId, dto.items);
+      const items = await this.stockService.batchDeduct(tx, tenantId, dto.items);
       const totalAmount = items.reduce(
         (sum, i) => sum + Math.round(i.price * i.qty * 100),
         0,
@@ -68,40 +71,6 @@ export class OrderService {
         include: { items: true },
       });
     });
-  }
-
-  private async processItems(
-    tx: any,
-    tenantId: number,
-    items: { skuId: number; qty: number; price: number }[],
-  ) {
-    return Promise.all(
-      items.map(async (item) => {
-        const sku = await tx.sku.findFirst({
-          where: { id: item.skuId, tenantId },
-          include: { product: true },
-        });
-        if (!sku) throw new BadRequestException(`SKU ${item.skuId} 不存在`);
-
-        // 原子扣减库存：stock >= qty 才扣，返回 count > 0 表示扣成功
-        const result = await tx.sku.updateMany({
-          where: { id: sku.id, stock: { gte: item.qty } },
-          data: { stock: { decrement: item.qty } },
-        });
-
-        const source = result.count > 0 ? 'stock' : 'custom';
-
-        return {
-          productName: sku.product.name,
-          skuCode: sku.skuCode,
-          skuAttrs: sku.attributes,
-          price: item.price,
-          qty: item.qty,
-          source,
-          costPrice: source === 'stock' ? Number(sku.costPrice) : undefined,
-        };
-      }),
-    );
   }
 
   async addItem(orderId: number, dto: AddItemDto) {
@@ -228,11 +197,29 @@ export class OrderService {
     });
   }
 
-  async updateStatus(id: number, status: string) {
+  private readonly ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+    pending: ['partial_delivered', 'delivered', 'cancelled'],
+    partial_delivered: ['delivered', 'cancelled'],
+    delivered: ['completed'],
+    completed: [],
+    cancelled: [],
+  };
+
+  async updateStatus(id: number, status: OrderStatus) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
+    const order = await this.prisma.order.findFirst({
+      where: { id, tenantId },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+
+    const allowed = this.ORDER_TRANSITIONS[order.status];
+    if (!allowed || !allowed.includes(status)) {
+      throw new BadRequestException(`订单不能从 ${order.status} 转为 ${status}`);
+    }
+
     await this.prisma.order.updateMany({
       where: { id, tenantId },
-      data: { status: status as OrderStatus },
+      data: { status },
     });
   }
 

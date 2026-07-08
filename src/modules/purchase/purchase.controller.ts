@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, ParseIntPipe } from '@nestjs/common';
 import { PurchaseService } from './purchase.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { PurchaseOrderStatus } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('采购单')
@@ -18,18 +20,25 @@ export class PurchaseController {
   findOne(@Param('id', ParseIntPipe) id: number) { return this.purchaseService.findOne(id); }
 
   @ApiOperation({ summary: '创建' })
+  @Roles('admin', 'manager')
   @Post()
   create(@Body() dto: CreatePurchaseDto) { return this.purchaseService.create(dto); }
 
   @ApiOperation({ summary: '从订单生成采购单' })
+  @Roles('admin', 'manager')
   @Post('from-order/:orderId')
-  generateFromOrder(@Param('orderId', ParseIntPipe) orderId: number) { return this.purchaseService.generateFromOrder(orderId); }
+  generateFromOrder(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Body('supplierId', ParseIntPipe) supplierId: number,
+  ) { return this.purchaseService.generateFromOrder(orderId, supplierId); }
 
   @ApiOperation({ summary: '确认入库' })
+  @Roles('admin', 'manager')
   @Patch(':id/confirm')
   confirm(@Param('id', ParseIntPipe) id: number) { return this.purchaseService.confirm(id); }
 
   @ApiOperation({ summary: '更新采购单状态' })
+  @Roles('admin', 'manager')
   @Patch(':id/status')
-  updateStatus(@Param('id', ParseIntPipe) id: number, @Body('status') status: string) { return this.purchaseService.updateStatus(id, status); }
+  updateStatus(@Param('id', ParseIntPipe) id: number, @Body('status') status: PurchaseOrderStatus) { return this.purchaseService.updateStatus(id, status); }
 }

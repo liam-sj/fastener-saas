@@ -55,6 +55,7 @@ enum PurchaseOrderStatus {
   confirmed
   partial_received
   received
+  cancelled
 }
 
 enum InboundOrderStatus {

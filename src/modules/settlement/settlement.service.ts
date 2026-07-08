@@ -67,7 +67,8 @@ export class SettlementService {
 
   async getSummary(query: QuerySummaryDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, customerId, status } = query;
+    const { page = 1, customerId, status } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
 
     // Aggregate by order
     const where: any = { tenantId };
@@ -116,68 +117,70 @@ export class SettlementService {
   async reconcile(dto: ReconcileDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
 
-    const order = await this.prisma.order.findFirst({
-      where: { id: dto.orderId, tenantId },
-      include: { items: true },
-    });
-    if (!order) throw new NotFoundException('订单不存在');
-
-    const results: any[] = [];
-    let totalReconciled = 0;
-
-    for (const item of dto.items) {
-      const orderItem = await this.prisma.orderItem.findFirst({
-        where: { id: item.orderItemId, orderId: dto.orderId, tenantId },
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({
+        where: { id: dto.orderId, tenantId },
+        include: { items: true },
       });
-      if (!orderItem)
-        throw new BadRequestException(
-          `OrderItem ${item.orderItemId} 不属于该订单`,
+      if (!order) throw new NotFoundException('订单不存在');
+
+      const results: any[] = [];
+      let totalReconciled = 0;
+
+      for (const item of dto.items) {
+        const orderItem = await tx.orderItem.findFirst({
+          where: { id: item.orderItemId, orderId: dto.orderId, tenantId },
+        });
+        if (!orderItem)
+          throw new BadRequestException(
+            `OrderItem ${item.orderItemId} 不属于该订单`,
+          );
+
+        // Check overpayment
+        const existingSettlements = await tx.settlement.findMany({
+          where: { orderItemId: item.orderItemId, tenantId },
+        });
+        const alreadySettled = existingSettlements.reduce(
+          (sum, s) => sum + Number(s.amount),
+          0,
         );
+        const itemTotal = Number(orderItem.price) * orderItem.qty;
+        if (alreadySettled + item.amount > itemTotal) {
+          throw new BadRequestException(
+            `OrderItem ${item.orderItemId} 收款金额超过条目总额`,
+          );
+        }
 
-      // Check overpayment
-      const existingSettlements = await this.prisma.settlement.findMany({
-        where: { orderItemId: item.orderItemId, tenantId },
+        await tx.settlement.create({
+          data: {
+            tenantId,
+            orderId: dto.orderId,
+            orderItemId: item.orderItemId,
+            amount: item.amount,
+            paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+            status: 'paid',
+          },
+        });
+
+        totalReconciled += item.amount;
+        results.push({ orderItemId: item.orderItemId, amount: item.amount });
+      }
+
+      // Update order paidAmount
+      const allSettlements = await tx.settlement.findMany({
+        where: { orderId: dto.orderId, tenantId },
       });
-      const alreadySettled = existingSettlements.reduce(
+      const newPaidAmount = allSettlements.reduce(
         (sum, s) => sum + Number(s.amount),
         0,
       );
-      const itemTotal = Number(orderItem.price) * orderItem.qty;
-      if (alreadySettled + item.amount > itemTotal) {
-        throw new BadRequestException(
-          `OrderItem ${item.orderItemId} 收款金额超过条目总额`,
-        );
-      }
 
-      const settlement = await this.prisma.settlement.create({
-        data: {
-          tenantId,
-          orderId: dto.orderId,
-          orderItemId: item.orderItemId,
-          amount: item.amount,
-          paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-          status: 'paid',
-        },
+      await tx.order.update({
+        where: { id: dto.orderId },
+        data: { paidAmount: Math.round(newPaidAmount * 100) / 100 },
       });
 
-      totalReconciled += item.amount;
-      results.push(settlement);
-    }
-
-    // Update order paidAmount
-    const allSettlements = await this.prisma.settlement.findMany({
-      where: { orderId: dto.orderId, tenantId },
+      return { settlements: results, totalReconciled };
     });
-    const newPaidAmount = allSettlements.reduce(
-      (sum, s) => sum + Number(s.amount),
-      0,
-    );
-
-    await this.prisma.order.update({
-      where: { id: dto.orderId },
-      data: { paidAmount: Math.round(newPaidAmount * 100) / 100 },
-    });
-
-    return { settlements: results, totalReconciled };
   }
 }

@@ -15,6 +15,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost) {
+    // 非 HTTP 上下文（WebSocket/gRPC/定时任务）不处理
+    if (host.getType() !== 'http') {
+      if (exception instanceof Error) {
+        this.logger.error(`[${host.getType()}] ${exception.message}`, exception.stack);
+      }
+      return;
+    }
+
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
 
@@ -44,7 +52,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       } else {
         httpStatus = HttpStatus.BAD_REQUEST;
         code = ErrorCode.BUSINESS_ERROR;
-        message = exception.message;
+        message = '数据操作失败';
+        this.logger.error(`Prisma error [${exception.code}]: ${exception.message}`, exception.stack);
       }
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);

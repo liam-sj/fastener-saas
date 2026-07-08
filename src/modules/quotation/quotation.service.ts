@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
+import { StockService } from '../inventory/stock.service';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { QueryQuotationDto } from './dto/query-quotation.dto';
@@ -11,11 +12,13 @@ export class QuotationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantCtx: TenantContextService,
+    private readonly stockService: StockService,
   ) {}
 
   async findAll(query: QueryQuotationDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, status, customerId, keyword } = query;
+    const { page = 1, status, customerId, keyword } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: Record<string, unknown> = { tenantId };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
@@ -105,7 +108,7 @@ export class QuotationService {
   ) {
     return this.prisma.$transaction(async (tx) => {
       const orderNo = await generateNo(tx as any, 'SO', tenantId);
-      const processedItems = await this.processOrderItemsInTx(tx, tenantId, items);
+      const processedItems = await this.stockService.batchDeduct(tx, tenantId, items);
       const totalAmount = processedItems.reduce((sum, i) => sum + Number(i.price) * i.qty, 0);
 
       return tx.order.create({
@@ -123,32 +126,6 @@ export class QuotationService {
         include: { items: true },
       });
     });
-  }
-
-  private async processOrderItemsInTx(
-    tx: any, tenantId: number,
-    items: { skuId: number; qty: number; price: number }[],
-  ) {
-    return Promise.all(items.map(async (item) => {
-      const sku = await tx.sku.findFirst({
-        where: { id: item.skuId, tenantId }, include: { product: true },
-      });
-      if (!sku) throw new BadRequestException(`SKU ${item.skuId} 不存在`);
-
-      // 原子扣减库存
-      const result = await tx.sku.updateMany({
-        where: { id: sku.id, stock: { gte: item.qty } },
-        data: { stock: { decrement: item.qty } },
-      });
-
-      const source = result.count > 0 ? 'stock' : 'custom';
-      return {
-        productName: sku.product.name, skuCode: sku.skuCode,
-        skuAttrs: sku.attributes, price: item.price, qty: item.qty,
-        source,
-        costPrice: source === 'stock' ? Number(sku.costPrice) : undefined,
-      };
-    }));
   }
 
   async reject(id: number) {

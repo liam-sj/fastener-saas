@@ -15,11 +15,13 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettlementModule } from './modules/settlement/settlement.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [PrismaModule, CommonModule, AuthModule, TenantModule, UserModule, CustomerModule, SupplierModule, ProductModule, QuotationModule, OrderModule, PurchaseModule, InventoryModule, SettlementModule],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
   ],
 })

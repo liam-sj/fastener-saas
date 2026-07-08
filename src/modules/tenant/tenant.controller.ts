@@ -3,6 +3,7 @@ import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { QueryTenantDto } from './dto/query-tenant.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('租户')
@@ -24,18 +25,21 @@ export class TenantController {
   }
 
   @ApiOperation({ summary: '创建' })
+  @Roles('admin')
   @Post()
   create(@Body() dto: CreateTenantDto) {
     return this.tenantService.create(dto);
   }
 
   @ApiOperation({ summary: '更新' })
+  @Roles('admin')
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTenantDto) {
     return this.tenantService.update(id, dto);
   }
 
   @ApiOperation({ summary: '删除' })
+  @Roles('admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.tenantService.remove(id);

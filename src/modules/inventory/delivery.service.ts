@@ -14,7 +14,8 @@ export class DeliveryService {
 
   async findAll(query: { page?: number; pageSize?: number; orderId?: number }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const { page = 1, pageSize = 20, orderId } = query;
+    const { page = 1, orderId } = query;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: Record<string, unknown> = { tenantId };
     if (orderId) where.orderId = orderId;
 

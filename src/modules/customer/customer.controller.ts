@@ -3,6 +3,7 @@ import { CustomerService } from './customer.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { QueryCustomerDto } from './dto/query-customer.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('客户')
@@ -24,18 +25,21 @@ export class CustomerController {
   }
 
   @ApiOperation({ summary: '创建' })
+  @Roles('admin', 'manager')
   @Post()
   create(@Body() dto: CreateCustomerDto) {
     return this.customerService.create(dto);
   }
 
   @ApiOperation({ summary: '更新' })
+  @Roles('admin', 'manager')
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCustomerDto) {
     return this.customerService.update(id, dto);
   }
 
   @ApiOperation({ summary: '删除' })
+  @Roles('admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.customerService.remove(id);
