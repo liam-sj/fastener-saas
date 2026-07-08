@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
 import { StockService } from '../inventory/stock.service';
+import { mul, sum, rnd } from '../../common/utils/money';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { QueryQuotationDto } from './dto/query-quotation.dto';
@@ -58,17 +59,17 @@ export class QuotationService {
           productId: sku.productId, skuId: sku.id, skuCode: sku.skuCode,
           productName: sku.product.name, attrs: sku.attributes,
           qty: item.qty, unitPrice: item.unitPrice,
-          amount: Math.round(item.qty * item.unitPrice * 100) / 100,
+          amount: mul(item.unitPrice, item.qty),
         };
       }),
     );
 
-    const totalAmount = itemsWithDetails.reduce((sum, i) => sum + i.amount, 0);
+    const totalAmount = sum(itemsWithDetails.map((i) => i.amount));
     return this.prisma.quotation.create({
       data: {
         tenantId, quotationNo, customerId: dto.customerId,
         items: itemsWithDetails,
-        totalAmount: Math.round(totalAmount * 100) / 100,
+        totalAmount,
         validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
       },
     });
@@ -109,12 +110,12 @@ export class QuotationService {
     return this.prisma.$transaction(async (tx) => {
       const orderNo = await generateNo(tx as any, 'SO', tenantId);
       const processedItems = await this.stockService.batchDeduct(tx, tenantId, items);
-      const totalAmount = processedItems.reduce((sum, i) => sum + Number(i.price) * i.qty, 0);
+      const totalAmount = sum(processedItems.map((i) => mul(i.price, i.qty)));
 
       return tx.order.create({
         data: {
           tenantId, orderNo, customerId, quotationId,
-          totalAmount: Math.round(totalAmount * 100) / 100,
+          totalAmount,
           items: {
             create: processedItems.map((item) => ({
               tenantId, productName: item.productName, skuCode: item.skuCode,

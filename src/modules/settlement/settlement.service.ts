@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { ReconcileDto } from './dto/reconcile.dto';
 import { QuerySummaryDto } from './dto/query-summary.dto';
+import { mul, sum, sub, rnd, add } from '../../common/utils/money';
 
 @Injectable()
 export class SettlementService {
@@ -28,39 +29,33 @@ export class SettlementService {
       const itemSettlements = order.settlements.filter(
         (s) => s.orderItemId === item.id,
       );
-      const settledAmount = itemSettlements.reduce(
-        (sum, s) => sum + Number(s.amount),
-        0,
-      );
-      const itemTotal = Number(item.price) * item.qty;
+      const settledAmount = sum(itemSettlements.map((s) => Number(s.amount)));
+      const itemTotal = mul(Number(item.price), item.qty);
       return {
         itemId: item.id,
         productName: item.productName,
         skuCode: item.skuCode,
         price: Number(item.price),
         qty: item.qty,
-        total: Math.round(itemTotal * 100) / 100,
-        settledAmount: Math.round(settledAmount * 100) / 100,
-        unpaidAmount: Math.round((itemTotal - settledAmount) * 100) / 100,
+        total: rnd(itemTotal),
+        settledAmount: rnd(settledAmount),
+        unpaidAmount: sub(itemTotal, settledAmount),
         settlements: itemSettlements,
       };
     });
 
-    const orderTotal = itemsWithSettlement.reduce((sum, i) => sum + i.total, 0);
-    const totalSettled = itemsWithSettlement.reduce(
-      (sum, i) => sum + i.settledAmount,
-      0,
-    );
+    const orderTotal = sum(itemsWithSettlement.map((i) => i.total));
+    const totalSettled = sum(itemsWithSettlement.map((i) => i.settledAmount));
 
     return {
       orderId: order.id,
       orderNo: order.orderNo,
       customer: order.customer,
       status: order.status,
-      totalAmount: Math.round(orderTotal * 100) / 100,
+      totalAmount: rnd(orderTotal),
       paidAmount: Number(order.paidAmount),
-      settledAmount: Math.round(totalSettled * 100) / 100,
-      unpaidAmount: Math.round((orderTotal - totalSettled) * 100) / 100,
+      settledAmount: rnd(totalSettled),
+      unpaidAmount: sub(orderTotal, totalSettled),
       items: itemsWithSettlement,
     };
   }
@@ -91,23 +86,17 @@ export class SettlementService {
     ]);
 
     const list = orders.map((order) => {
-      const orderTotal = order.items.reduce(
-        (sum, i) => sum + Number(i.price) * i.qty,
-        0,
-      );
-      const totalSettled = order.settlements.reduce(
-        (sum, s) => sum + Number(s.amount),
-        0,
-      );
+      const orderTotal = sum(order.items.map((i) => mul(Number(i.price), i.qty)));
+      const totalSettled = sum(order.settlements.map((s) => Number(s.amount)));
       return {
         orderId: order.id,
         orderNo: order.orderNo,
         customer: order.customer,
         status: order.status,
-        totalAmount: Math.round(orderTotal * 100) / 100,
+        totalAmount: rnd(orderTotal),
         paidAmount: Number(order.paidAmount),
-        settledAmount: Math.round(totalSettled * 100) / 100,
-        unpaidAmount: Math.round((orderTotal - totalSettled) * 100) / 100,
+        settledAmount: rnd(totalSettled),
+        unpaidAmount: sub(orderTotal, totalSettled),
       };
     });
 
@@ -140,11 +129,8 @@ export class SettlementService {
         const existingSettlements = await tx.settlement.findMany({
           where: { orderItemId: item.orderItemId, tenantId },
         });
-        const alreadySettled = existingSettlements.reduce(
-          (sum, s) => sum + Number(s.amount),
-          0,
-        );
-        const itemTotal = Number(orderItem.price) * orderItem.qty;
+        const alreadySettled = sum(existingSettlements.map((s) => Number(s.amount)));
+        const itemTotal = mul(Number(orderItem.price), orderItem.qty);
         if (alreadySettled + item.amount > itemTotal) {
           throw new BadRequestException(
             `OrderItem ${item.orderItemId} 收款金额超过条目总额`,
@@ -170,14 +156,11 @@ export class SettlementService {
       const allSettlements = await tx.settlement.findMany({
         where: { orderId: dto.orderId, tenantId },
       });
-      const newPaidAmount = allSettlements.reduce(
-        (sum, s) => sum + Number(s.amount),
-        0,
-      );
+      const newPaidAmount = sum(allSettlements.map((s) => Number(s.amount)));
 
       await tx.order.update({
         where: { id: dto.orderId },
-        data: { paidAmount: Math.round(newPaidAmount * 100) / 100 },
+        data: { paidAmount: newPaidAmount },
       });
 
       return { settlements: results, totalReconciled };

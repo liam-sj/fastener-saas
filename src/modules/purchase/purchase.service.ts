@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
+import { mul, sum, rnd } from '../../common/utils/money';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { PurchaseOrderStatus } from '@prisma/client';
 
@@ -44,12 +45,12 @@ export class PurchaseService {
   async create(dto: CreatePurchaseDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const purchaseNo = await generateNo(this.prisma, 'PO', tenantId);
-    const totalAmount = dto.items.reduce((sum, i) => sum + i.qty * i.unitPrice, 0);
+    const totalAmount = sum(dto.items.map((i) => mul(i.unitPrice, i.qty)));
 
     return this.prisma.purchaseOrder.create({
       data: {
         tenantId, purchaseNo, supplierId: dto.supplierId,
-        totalAmount: Math.round(totalAmount * 100) / 100,
+        totalAmount,
         expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
         items: {
           create: dto.items.map((i) => ({
@@ -78,12 +79,12 @@ export class PurchaseService {
       if (!supplier) throw new BadRequestException('供应商不存在');
 
       const purchaseNo = await generateNo(tx as any, 'PO', tenantId);
-      const totalAmount = customItems.reduce((sum, i) => sum + Number(i.price) * i.qty, 0);
+      const totalAmount = sum(customItems.map((i) => mul(Number(i.price), i.qty)));
 
       const po = await tx.purchaseOrder.create({
         data: {
           tenantId, purchaseNo, supplierId,
-          totalAmount: Math.round(totalAmount * 100) / 100,
+          totalAmount,
           items: {
             create: customItems.map((i) => ({
               tenantId, productName: i.productName, skuCode: i.skuCode,

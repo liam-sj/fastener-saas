@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
+import { mul, add, div } from '../../common/utils/money';
 import { CreateInboundDto } from './dto/create-inbound.dto';
 
 @Injectable()
@@ -100,9 +101,10 @@ export class InboundService {
           const oldCostPrice = Number(sku.costPrice);
           const unitCost = Number(item.unitCost);
           const newStock = oldStock + item.qty;
-          const newTotalValue = oldStock * oldCostPrice + item.qty * unitCost;
-          const newCostPrice =
-            newStock > 0 ? Math.round((newTotalValue / newStock) * 100) / 100 : 0;
+          const oldTotalValue = mul(oldCostPrice, oldStock);
+          const newItemValue = mul(unitCost, item.qty);
+          const newTotalValue = add(oldTotalValue, newItemValue);
+          const newCostPrice = newStock > 0 ? div(newTotalValue, newStock) : 0;
 
           await tx.sku.updateMany({
             where: { id: sku.id },

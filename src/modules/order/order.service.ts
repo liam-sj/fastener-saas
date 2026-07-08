@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
 import { StockService } from '../inventory/stock.service';
+import { mul, sum, sub } from '../../common/utils/money';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
@@ -51,10 +52,7 @@ export class OrderService {
     return this.prisma.$transaction(async (tx) => {
       const orderNo = await generateNo(tx as any, 'SO', tenantId);
       const items = await this.stockService.batchDeduct(tx, tenantId, dto.items);
-      const totalAmount = items.reduce(
-        (sum, i) => sum + Math.round(i.price * i.qty * 100),
-        0,
-      ) / 100;
+      const totalAmount = sum(items.map((i) => mul(i.price, i.qty)));
 
       return tx.order.create({
         data: {
@@ -187,13 +185,10 @@ export class OrderService {
 
   private async recalculateTotalInTx(tx: any, tenantId: number, orderId: number) {
     const items = await tx.orderItem.findMany({ where: { orderId, tenantId } });
-    const total = items.reduce(
-      (sum: number, i: any) => sum + Math.round(Number(i.price) * i.qty * 100),
-      0,
-    ) / 100;
+    const total = sum(items.map((i: any) => mul(Number(i.price), i.qty)));
     await tx.order.update({
       where: { id: orderId },
-      data: { totalAmount: Math.round(total * 100) / 100 },
+      data: { totalAmount: total },
     });
   }
 
@@ -246,9 +241,9 @@ export class OrderService {
         if (poItem) costPrice = Number(poItem.unitPrice);
       }
 
-      const revenue = Number(item.price) * item.qty;
-      const cost = costPrice !== null ? costPrice * item.qty : 0;
-      const profit = revenue - cost;
+      const revenue = mul(Number(item.price), item.qty);
+      const cost = costPrice !== null ? mul(costPrice, item.qty) : 0;
+      const profit = sub(revenue, cost);
 
       return {
         itemId: item.id,
@@ -258,19 +253,19 @@ export class OrderService {
         price: Number(item.price),
         qty: item.qty,
         costPrice,
-        revenue: Math.round(revenue * 100) / 100,
-        cost: Math.round(cost * 100) / 100,
-        profit: Math.round(profit * 100) / 100,
+        revenue,
+        cost,
+        profit,
         deliveredQty: item.deliveredQty,
       };
     });
 
-    const totalRevenue = Math.round(itemBreakdown.reduce((s, i) => s + i.revenue, 0) * 100) / 100;
-    const totalCost = Math.round(itemBreakdown.reduce((s, i) => s + i.cost, 0) * 100) / 100;
-    const totalProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
+    const totalRevenue = sum(itemBreakdown.map((i) => i.revenue));
+    const totalCost = sum(itemBreakdown.map((i) => i.cost));
+    const totalProfit = sub(totalRevenue, totalCost);
     const profitMargin =
       totalRevenue > 0
-        ? Math.round((totalProfit / totalRevenue) * 10000) / 100
+        ? mul(totalProfit / totalRevenue, 100)
         : 0;
 
     return {

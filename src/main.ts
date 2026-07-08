@@ -5,8 +5,11 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { validateEnv } from './config/env.validation';
 
 async function bootstrap() {
+  // 启动时强校验环境变量，缺失直接 crash
+  validateEnv();
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(

@@ -42,28 +42,36 @@ export class DeliveryService {
 
   async create(dto: CreateDeliveryDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const deliveryNo = await generateNo(this.prisma, 'DO', tenantId);
 
-    for (const item of dto.items) {
-      const orderItem = await this.prisma.orderItem.findFirst({
-        where: { id: item.orderItemId, tenantId },
+    return this.prisma.$transaction(async (tx) => {
+      const deliveryNo = await generateNo(tx as any, 'DO', tenantId);
+
+      // 批量查订单条目，原子校验发货量不超
+      const orderItemIds = dto.items.map((i) => i.orderItemId);
+      const orderItems = await tx.orderItem.findMany({
+        where: { id: { in: orderItemIds }, tenantId },
       });
-      if (!orderItem) throw new BadRequestException(`OrderItem ${item.orderItemId} 不存在`);
-      if (orderItem.deliveredQty + item.qty > orderItem.qty) {
-        throw new BadRequestException(`OrderItem ${item.orderItemId} 发货数量超过订单数量`);
-      }
-    }
+      const itemMap = new Map(orderItems.map((oi) => [oi.id, oi]));
 
-    return this.prisma.deliveryOrder.create({
-      data: {
-        tenantId, deliveryNo, orderId: dto.orderId,
-        items: {
-          create: dto.items.map((i) => ({
-            tenantId, orderItemId: i.orderItemId, qty: i.qty,
-          })),
+      for (const item of dto.items) {
+        const orderItem = itemMap.get(item.orderItemId);
+        if (!orderItem) throw new BadRequestException(`OrderItem ${item.orderItemId} 不存在`);
+        if (orderItem.deliveredQty + item.qty > orderItem.qty) {
+          throw new BadRequestException(`OrderItem ${item.orderItemId} 发货数量超过订单数量`);
+        }
+      }
+
+      return tx.deliveryOrder.create({
+        data: {
+          tenantId, deliveryNo, orderId: dto.orderId,
+          items: {
+            create: dto.items.map((i) => ({
+              tenantId, orderItemId: i.orderItemId, qty: i.qty,
+            })),
+          },
         },
-      },
-      include: { items: true },
+        include: { items: true },
+      });
     });
   }
 
@@ -77,11 +85,31 @@ export class DeliveryService {
       });
       if (!delivery) throw new NotFoundException('发货单不存在');
 
+      // 批量读取当前 orderItems 状态
+      const itemIds = delivery.items.map((i) => i.orderItemId);
+      const currentItems = await tx.orderItem.findMany({
+        where: { id: { in: itemIds } },
+      });
+      const itemMap = new Map(currentItems.map((oi) => [oi.id, oi]));
+
       for (const item of delivery.items) {
-        await tx.orderItem.updateMany({
-          where: { id: item.orderItemId },
+        const oi = itemMap.get(item.orderItemId);
+        if (!oi) throw new BadRequestException(`OrderItem ${item.orderItemId} 不存在`);
+
+        // 原子校验：deliveredQty + 本次 <= 订单总量，防止并发超发
+        const maxAllowed = oi.qty - item.qty;
+        const result = await tx.orderItem.updateMany({
+          where: {
+            id: item.orderItemId,
+            deliveredQty: { lte: maxAllowed },
+          },
           data: { deliveredQty: { increment: item.qty } },
         });
+        if (result.count === 0) {
+          throw new BadRequestException(
+            `OrderItem ${item.orderItemId} 发货数量超过订单数量或其他发货单已占用`,
+          );
+        }
       }
 
       await tx.deliveryOrder.updateMany({
