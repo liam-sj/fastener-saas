@@ -12,10 +12,10 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
-  @ApiOperation({ summary: '分页查询列表' })
+  @ApiOperation({ summary: '查询当前租户信息' })
   @Get()
-  findAll(@Query() query: QueryTenantDto) {
-    return this.tenantService.findAll(query);
+  findCurrent(@Query() query: QueryTenantDto) {
+    return this.tenantService.findCurrent(query);
   }
 
   @ApiOperation({ summary: '查询详情' })

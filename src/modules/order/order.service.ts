@@ -185,7 +185,7 @@ export class OrderService {
 
   private async recalculateTotalInTx(tx: any, tenantId: number, orderId: number) {
     const items = await tx.orderItem.findMany({ where: { orderId, tenantId } });
-    const total = sum(items.map((i: any) => mul(Number(i.price), i.qty)));
+    const total = sum(items.map((i: any) => mul(i.price, i.qty)));
     await tx.order.update({
       where: { id: orderId },
       data: { totalAmount: total },
@@ -230,18 +230,27 @@ export class OrderService {
     });
     if (!order) throw new NotFoundException('订单不存在');
 
+    // 预建采购单条目 Map，O(1) 查找替代 O(N×M) 线性查找
+    const poItemMap = new Map<string, number>();
+    for (const item of order.items) {
+      if (item.purchaseOrder) {
+        for (const poi of item.purchaseOrder.items) {
+          if (!poItemMap.has(poi.skuCode)) {
+            poItemMap.set(poi.skuCode, Number(poi.unitPrice));
+          }
+        }
+      }
+    }
+
     const itemBreakdown = order.items.map((item) => {
       let costPrice = item.costPrice ? Number(item.costPrice) : null;
 
-      // 定制件回退到采购单条目单价
-      if (costPrice === null && item.source === 'custom' && item.purchaseOrder) {
-        const poItem = item.purchaseOrder.items.find(
-          (poi) => poi.skuCode === item.skuCode,
-        );
-        if (poItem) costPrice = Number(poItem.unitPrice);
+      // 定制件回退到采购单条目单价 (O(1) Map 查找)
+      if (costPrice === null && item.source === 'custom') {
+        costPrice = poItemMap.get(item.skuCode) ?? null;
       }
 
-      const revenue = mul(Number(item.price), item.qty);
+      const revenue = mul(item.price, item.qty);
       const cost = costPrice !== null ? mul(costPrice, item.qty) : 0;
       const profit = sub(revenue, cost);
 

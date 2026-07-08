@@ -1,6 +1,5 @@
 import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -11,12 +10,9 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @ApiOperation({ summary: '注册' })
-  @Public()
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
-  }
+  // register 接口已移除: 单租户私有化部署场景,首个 admin 由 seed.ts 创建,
+  // 后续用户由 admin 在 /api/users 创建(已有 @Roles('admin') 保护)。
+  // 如需恢复开放注册,加验证码 + IP 限流 + 邀请码后再启用。
 
   @ApiOperation({ summary: '登录' })
   @Public()

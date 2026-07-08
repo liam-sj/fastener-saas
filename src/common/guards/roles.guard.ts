@@ -15,6 +15,10 @@ export class RolesGuard implements CanActivate {
       return true;
     }
     const { user } = context.switchToHttp().getRequest();
-    return requiredRoles.includes(user?.role);
+    if (!user) {
+      // 标了 @Roles 但 req.user 为空 = JwtAuthGuard 未执行或守卫顺序配置错误
+      throw new Error('接口需角色但用户上下文为空 —— 检查 @Public 是否误与 @Roles 共存');
+    }
+    return requiredRoles.includes(user.role);
   }
 }

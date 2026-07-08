@@ -29,8 +29,8 @@ export class SettlementService {
       const itemSettlements = order.settlements.filter(
         (s) => s.orderItemId === item.id,
       );
-      const settledAmount = sum(itemSettlements.map((s) => Number(s.amount)));
-      const itemTotal = mul(Number(item.price), item.qty);
+      const settledAmount = sum(itemSettlements.map((s) => s.amount));
+      const itemTotal = mul(item.price, item.qty);
       return {
         itemId: item.id,
         productName: item.productName,
@@ -86,8 +86,8 @@ export class SettlementService {
     ]);
 
     const list = orders.map((order) => {
-      const orderTotal = sum(order.items.map((i) => mul(Number(i.price), i.qty)));
-      const totalSettled = sum(order.settlements.map((s) => Number(s.amount)));
+      const orderTotal = sum(order.items.map((i) => mul(i.price, i.qty)));
+      const totalSettled = sum(order.settlements.map((s) => s.amount));
       return {
         orderId: order.id,
         orderNo: order.orderNo,
@@ -129,8 +129,8 @@ export class SettlementService {
         const existingSettlements = await tx.settlement.findMany({
           where: { orderItemId: item.orderItemId, tenantId },
         });
-        const alreadySettled = sum(existingSettlements.map((s) => Number(s.amount)));
-        const itemTotal = mul(Number(orderItem.price), orderItem.qty);
+        const alreadySettled = sum(existingSettlements.map((s) => s.amount));
+        const itemTotal = mul(orderItem.price, orderItem.qty);
         if (alreadySettled + item.amount > itemTotal) {
           throw new BadRequestException(
             `OrderItem ${item.orderItemId} 收款金额超过条目总额`,
@@ -156,7 +156,7 @@ export class SettlementService {
       const allSettlements = await tx.settlement.findMany({
         where: { orderId: dto.orderId, tenantId },
       });
-      const newPaidAmount = sum(allSettlements.map((s) => Number(s.amount)));
+      const newPaidAmount = sum(allSettlements.map((s) => s.amount));
 
       await tx.order.update({
         where: { id: dto.orderId },

@@ -1,7 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { IsString, MinLength, IsOptional, IsInt, validateSync } from 'class-validator';
 
-class EnvConfig {
+export class EnvConfig {
   @IsString()
   @MinLength(32)
   JWT_SECRET!: string;
@@ -22,8 +22,12 @@ class EnvConfig {
   SWAGGER_ENABLED?: string;
 }
 
-export function validateEnv(): void {
-  const config = plainToInstance(EnvConfig, process.env, {
+/**
+ * 供 ConfigModule.forRoot({ validate }) 使用的校验函数。
+ * 校验失败直接 throw，启动即 crash。
+ */
+export function validate(raw: Record<string, unknown>): EnvConfig {
+  const config = plainToInstance(EnvConfig, raw, {
     enableImplicitConversion: true,
   });
 
@@ -40,4 +44,7 @@ export function validateEnv(): void {
       .join('\n');
     throw new Error(`环境变量校验失败，进程退出:\n${messages}`);
   }
+
+  return config;
 }
+

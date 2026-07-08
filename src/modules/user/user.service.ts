@@ -55,11 +55,20 @@ export class UserService {
 
   async update(id: number, dto: UpdateUserDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const currentRole = this.tenantCtx.getRole();
+    const userId = this.tenantCtx.getUserId();
 
-    // 非 admin 不能修改角色
-    if (dto.role && currentRole !== 'admin') {
-      throw new BadRequestException('仅管理员可修改角色');
+    // 不能降级自己的管理员角色
+    if (dto.role && dto.role !== 'admin' && id === userId) {
+      throw new BadRequestException('不能降级自己的管理员角色');
+    }
+
+    // 若降级他人导致租户无 admin，拒绝
+    if (dto.role && dto.role !== 'admin') {
+      const target = await this.prisma.user.findFirst({ where: { id, tenantId } });
+      if (target?.role === 'admin') {
+        const adminCount = await this.prisma.user.count({ where: { tenantId, role: 'admin' } });
+        if (adminCount <= 1) throw new BadRequestException('租户至少需保留一个管理员');
+      }
     }
 
     const data: any = { ...dto };

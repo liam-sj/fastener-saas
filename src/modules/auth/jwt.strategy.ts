@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { PrismaService } from '../../prisma/prisma.service';
 
 export interface JwtPayload {
   sub: number;
@@ -10,15 +11,12 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
-    const secret = process.env.JWT_SECRET;
-    if (!secret || secret.length < 32) {
-      throw new Error('JWT_SECRET 必须配置且长度至少 32 字符');
-    }
+  constructor(private readonly prisma: PrismaService) {
+    // JWT_SECRET 的存在性和长度已由 env.validation.ts 统一校验,此处直接使用
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: secret,
+      secretOrKey: process.env.JWT_SECRET!,
     });
   }
 
@@ -26,6 +24,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!payload.sub || !payload.tenantId) {
       throw new UnauthorizedException('无效的 token');
     }
-    return { userId: payload.sub, tenantId: payload.tenantId, role: payload.role };
+
+    // 校验用户仍存在且未被封禁/删除(封禁用户后旧 token 即时失效)
+    const user = await this.prisma.user.findFirst({
+      where: { id: payload.sub, tenantId: payload.tenantId },
+      select: { id: true, role: true },
+    });
+    if (!user) throw new UnauthorizedException('用户不存在或已禁用');
+
+    return { userId: user.id, tenantId: payload.tenantId, role: user.role };
   }
 }

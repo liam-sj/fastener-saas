@@ -5,16 +5,16 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
-import { validateEnv } from './config/env.validation';
 
 async function bootstrap() {
-  // 启动时强校验环境变量，缺失直接 crash
-  validateEnv();
+  // 环境变量校验由 ConfigModule.forRoot({ validate }) 在模块初始化时自动执行
+  // 校验失败直接 crash,不进入 NestFactory.create
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
     }),

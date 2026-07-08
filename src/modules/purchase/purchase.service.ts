@@ -79,7 +79,7 @@ export class PurchaseService {
       if (!supplier) throw new BadRequestException('供应商不存在');
 
       const purchaseNo = await generateNo(tx as any, 'PO', tenantId);
-      const totalAmount = sum(customItems.map((i) => mul(Number(i.price), i.qty)));
+      const totalAmount = sum(customItems.map((i) => mul(i.price, i.qty)));
 
       const po = await tx.purchaseOrder.create({
         data: {
