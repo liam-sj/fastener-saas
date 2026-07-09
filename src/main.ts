@@ -22,8 +22,9 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  // Swagger (生产环境默认关闭，可通过 SWAGGER_ENABLED=true 开启)
-  if (process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true') {
+  // Swagger — 开发部署阶段暂时始终开启，上线前恢复条件判断
+  // if (process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true')
+  {
     const config = new DocumentBuilder()
       .setTitle('紧固件 SaaS ERP')
       .setDescription('报价 -> 订单 -> 采购 -> 入库 -> 发货 -> 对账 全链路 API')
