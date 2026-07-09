@@ -117,23 +117,63 @@ async function main() {
   const categoriesData = [
     {
       name: '螺栓',
-      specTemplate: { 规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20'], 长度: ['10', '15', '20', '25', '30', '35', '40', '45', '50', '60', '80', '100'], 材质: ['碳钢', '不锈钢304', '不锈钢316', '合金钢'], 表面处理: ['镀锌', '发黑', '达克罗', '热镀锌'], 等级: ['4.8', '6.8', '8.8', '10.9', '12.9'] },
+      specTemplate: {
+        规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20'],
+        长度: [
+          '10',
+          '15',
+          '20',
+          '25',
+          '30',
+          '35',
+          '40',
+          '45',
+          '50',
+          '60',
+          '80',
+          '100',
+        ],
+        材质: ['碳钢', '不锈钢304', '不锈钢316', '合金钢'],
+        表面处理: ['镀锌', '发黑', '达克罗', '热镀锌'],
+        等级: ['4.8', '6.8', '8.8', '10.9', '12.9'],
+      },
     },
     {
       name: '螺钉',
-      specTemplate: { 规格: ['M3', 'M4', 'M5', 'M6', 'M8'], 长度: ['6', '8', '10', '12', '16', '20', '25', '30', '40'], 材质: ['碳钢', '不锈钢304', '不锈钢316'], 表面处理: ['镀锌', '发黑', '达克罗'], 头型: ['盘头', '沉头', '半沉头', '六角头'] },
+      specTemplate: {
+        规格: ['M3', 'M4', 'M5', 'M6', 'M8'],
+        长度: ['6', '8', '10', '12', '16', '20', '25', '30', '40'],
+        材质: ['碳钢', '不锈钢304', '不锈钢316'],
+        表面处理: ['镀锌', '发黑', '达克罗'],
+        头型: ['盘头', '沉头', '半沉头', '六角头'],
+      },
     },
     {
       name: '螺母',
-      specTemplate: { 规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20', 'M24'], 材质: ['碳钢', '不锈钢304', '不锈钢316', '合金钢'], 表面处理: ['镀锌', '发黑', '达克罗', '热镀锌'], 标准: ['GB6170', 'GB6172', 'DIN934'] },
+      specTemplate: {
+        规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20', 'M24'],
+        材质: ['碳钢', '不锈钢304', '不锈钢316', '合金钢'],
+        表面处理: ['镀锌', '发黑', '达克罗', '热镀锌'],
+        标准: ['GB6170', 'GB6172', 'DIN934'],
+      },
     },
     {
       name: '垫圈',
-      specTemplate: { 规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20', 'M24'], 材质: ['碳钢', '不锈钢304', '弹簧钢'], 表面处理: ['镀锌', '发黑', '达克罗'], 类型: ['平垫圈', '弹簧垫圈'] },
+      specTemplate: {
+        规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20', 'M24'],
+        材质: ['碳钢', '不锈钢304', '弹簧钢'],
+        表面处理: ['镀锌', '发黑', '达克罗'],
+        类型: ['平垫圈', '弹簧垫圈'],
+      },
     },
     {
       name: '牙条',
-      specTemplate: { 规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20'], 长度: ['1000', '2000', '3000'], 材质: ['碳钢', '不锈钢304', '不锈钢316', '合金钢'], 表面处理: ['镀锌', '发黑', '热镀锌'] },
+      specTemplate: {
+        规格: ['M6', 'M8', 'M10', 'M12', 'M16', 'M20'],
+        长度: ['1000', '2000', '3000'],
+        材质: ['碳钢', '不锈钢304', '不锈钢316', '合金钢'],
+        表面处理: ['镀锌', '发黑', '热镀锌'],
+      },
     },
   ];
 
@@ -161,14 +201,20 @@ async function main() {
       });
     }
 
-    const abbrev = categoryAbbreviations[catData.name] || catData.name.substring(0, 3).toUpperCase();
+    const abbrev =
+      categoryAbbreviations[catData.name] ||
+      catData.name.substring(0, 3).toUpperCase();
 
     // 每个分类 2-3 个 SPU
     const productDefs = getProductDefs(catData.name);
 
     for (const pDef of productDefs) {
       let product = await prisma.product.findFirst({
-        where: { tenantId: tenant.id, categoryId: category.id, name: pDef.name },
+        where: {
+          tenantId: tenant.id,
+          categoryId: category.id,
+          name: pDef.name,
+        },
       });
       if (!product) {
         product = await prisma.product.create({
@@ -192,13 +238,16 @@ async function main() {
         const surface = spec.surface || '镀锌';
 
         const codeParts = [abbrev];
-        if (spec.size) codeParts.push(length ? `${spec.size}x${length}` : spec.size);
+        if (spec.size)
+          codeParts.push(length ? `${spec.size}x${length}` : spec.size);
         if (material && material !== '碳钢') codeParts.push(material);
         if (surface && surface !== '镀锌') codeParts.push(surface);
 
         let skuCode = codeParts.join('-');
         // 确保唯一
-        const existingCount = await prisma.sku.count({ where: { skuCode, tenantId: tenant.id } });
+        const existingCount = await prisma.sku.count({
+          where: { skuCode, tenantId: tenant.id },
+        });
         if (existingCount > 0) {
           skuCode = `${skuCode}-${i + 1}`;
         }
@@ -249,11 +298,76 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 5782 六角头螺栓，应用最广泛的紧固件',
           tags: ['六角头', 'GB5782'],
           specs: [
-            { size: 'M6', length: '20', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M6', 长度: '20', 材质: '碳钢', 表面处理: '镀锌', 等级: '8.8' }, price: 0.15 },
-            { size: 'M8', length: '25', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M8', 长度: '25', 材质: '碳钢', 表面处理: '镀锌', 等级: '8.8' }, price: 0.25 },
-            { size: 'M10', length: '30', material: '不锈钢304', surface: '达克罗', attrs: { 规格: 'M10', 长度: '30', 材质: '不锈钢304', 表面处理: '达克罗', 等级: '8.8' }, price: 0.65 },
-            { size: 'M12', length: '40', material: '碳钢', surface: '热镀锌', attrs: { 规格: 'M12', 长度: '40', 材质: '碳钢', 表面处理: '热镀锌', 等级: '10.9' }, price: 0.85 },
-            { size: 'M16', length: '50', material: '合金钢', surface: '达克罗', attrs: { 规格: 'M16', 长度: '50', 材质: '合金钢', 表面处理: '达克罗', 等级: '12.9' }, price: 1.80 },
+            {
+              size: 'M6',
+              length: '20',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M6',
+                长度: '20',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                等级: '8.8',
+              },
+              price: 0.15,
+            },
+            {
+              size: 'M8',
+              length: '25',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M8',
+                长度: '25',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                等级: '8.8',
+              },
+              price: 0.25,
+            },
+            {
+              size: 'M10',
+              length: '30',
+              material: '不锈钢304',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M10',
+                长度: '30',
+                材质: '不锈钢304',
+                表面处理: '达克罗',
+                等级: '8.8',
+              },
+              price: 0.65,
+            },
+            {
+              size: 'M12',
+              length: '40',
+              material: '碳钢',
+              surface: '热镀锌',
+              attrs: {
+                规格: 'M12',
+                长度: '40',
+                材质: '碳钢',
+                表面处理: '热镀锌',
+                等级: '10.9',
+              },
+              price: 0.85,
+            },
+            {
+              size: 'M16',
+              length: '50',
+              material: '合金钢',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M16',
+                长度: '50',
+                材质: '合金钢',
+                表面处理: '达克罗',
+                等级: '12.9',
+              },
+              price: 1.8,
+            },
           ],
         },
         {
@@ -261,11 +375,76 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 70.1 内六角圆柱头螺栓，机床模具常用',
           tags: ['内六角', '圆柱头', 'GB70.1'],
           specs: [
-            { size: 'M6', length: '16', material: '合金钢', surface: '发黑', attrs: { 规格: 'M6', 长度: '16', 材质: '合金钢', 表面处理: '发黑', 等级: '12.9' }, price: 0.20 },
-            { size: 'M8', length: '20', material: '合金钢', surface: '发黑', attrs: { 规格: 'M8', 长度: '20', 材质: '合金钢', 表面处理: '发黑', 等级: '12.9' }, price: 0.35 },
-            { size: 'M10', length: '30', material: '不锈钢304', surface: '达克罗', attrs: { 规格: 'M10', 长度: '30', 材质: '不锈钢304', 表面处理: '达克罗', 等级: '12.9' }, price: 0.80 },
-            { size: 'M12', length: '35', material: '合金钢', surface: '发黑', attrs: { 规格: 'M12', 长度: '35', 材质: '合金钢', 表面处理: '发黑', 等级: '12.9' }, price: 1.00 },
-            { size: 'M16', length: '45', material: '合金钢', surface: '发黑', attrs: { 规格: 'M16', 长度: '45', 材质: '合金钢', 表面处理: '发黑', 等级: '12.9' }, price: 2.00 },
+            {
+              size: 'M6',
+              length: '16',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M6',
+                长度: '16',
+                材质: '合金钢',
+                表面处理: '发黑',
+                等级: '12.9',
+              },
+              price: 0.2,
+            },
+            {
+              size: 'M8',
+              length: '20',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M8',
+                长度: '20',
+                材质: '合金钢',
+                表面处理: '发黑',
+                等级: '12.9',
+              },
+              price: 0.35,
+            },
+            {
+              size: 'M10',
+              length: '30',
+              material: '不锈钢304',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M10',
+                长度: '30',
+                材质: '不锈钢304',
+                表面处理: '达克罗',
+                等级: '12.9',
+              },
+              price: 0.8,
+            },
+            {
+              size: 'M12',
+              length: '35',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M12',
+                长度: '35',
+                材质: '合金钢',
+                表面处理: '发黑',
+                等级: '12.9',
+              },
+              price: 1.0,
+            },
+            {
+              size: 'M16',
+              length: '45',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M16',
+                长度: '45',
+                材质: '合金钢',
+                表面处理: '发黑',
+                等级: '12.9',
+              },
+              price: 2.0,
+            },
           ],
         },
       ];
@@ -276,10 +455,60 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 818 十字槽盘头螺钉',
           tags: ['十字', '盘头', 'GB818'],
           specs: [
-            { size: 'M3', length: '8', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M3', 长度: '8', 材质: '碳钢', 表面处理: '镀锌', 头型: '盘头' }, price: 0.05 },
-            { size: 'M4', length: '12', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M4', 长度: '12', 材质: '碳钢', 表面处理: '镀锌', 头型: '盘头' }, price: 0.08 },
-            { size: 'M5', length: '16', material: '不锈钢304', attrs: { 规格: 'M5', 长度: '16', 材质: '不锈钢304', 头型: '盘头' }, price: 0.18 },
-            { size: 'M6', length: '20', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M6', 长度: '20', 材质: '碳钢', 表面处理: '镀锌', 头型: '盘头' }, price: 0.12 },
+            {
+              size: 'M3',
+              length: '8',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M3',
+                长度: '8',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                头型: '盘头',
+              },
+              price: 0.05,
+            },
+            {
+              size: 'M4',
+              length: '12',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M4',
+                长度: '12',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                头型: '盘头',
+              },
+              price: 0.08,
+            },
+            {
+              size: 'M5',
+              length: '16',
+              material: '不锈钢304',
+              attrs: {
+                规格: 'M5',
+                长度: '16',
+                材质: '不锈钢304',
+                头型: '盘头',
+              },
+              price: 0.18,
+            },
+            {
+              size: 'M6',
+              length: '20',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M6',
+                长度: '20',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                头型: '盘头',
+              },
+              price: 0.12,
+            },
           ],
         },
         {
@@ -287,10 +516,60 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 70.3 沉头内六角螺钉',
           tags: ['沉头', '内六角', 'GB70.3'],
           specs: [
-            { size: 'M4', length: '12', material: '合金钢', surface: '发黑', attrs: { 规格: 'M4', 长度: '12', 材质: '合金钢', 表面处理: '发黑', 头型: '沉头' }, price: 0.12 },
-            { size: 'M5', length: '16', material: '合金钢', surface: '发黑', attrs: { 规格: 'M5', 长度: '16', 材质: '合金钢', 表面处理: '发黑', 头型: '沉头' }, price: 0.18 },
-            { size: 'M6', length: '20', material: '不锈钢304', attrs: { 规格: 'M6', 长度: '20', 材质: '不锈钢304', 头型: '沉头' }, price: 0.35 },
-            { size: 'M8', length: '25', material: '合金钢', surface: '发黑', attrs: { 规格: 'M8', 长度: '25', 材质: '合金钢', 表面处理: '发黑', 头型: '沉头' }, price: 0.40 },
+            {
+              size: 'M4',
+              length: '12',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M4',
+                长度: '12',
+                材质: '合金钢',
+                表面处理: '发黑',
+                头型: '沉头',
+              },
+              price: 0.12,
+            },
+            {
+              size: 'M5',
+              length: '16',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M5',
+                长度: '16',
+                材质: '合金钢',
+                表面处理: '发黑',
+                头型: '沉头',
+              },
+              price: 0.18,
+            },
+            {
+              size: 'M6',
+              length: '20',
+              material: '不锈钢304',
+              attrs: {
+                规格: 'M6',
+                长度: '20',
+                材质: '不锈钢304',
+                头型: '沉头',
+              },
+              price: 0.35,
+            },
+            {
+              size: 'M8',
+              length: '25',
+              material: '合金钢',
+              surface: '发黑',
+              attrs: {
+                规格: 'M8',
+                长度: '25',
+                材质: '合金钢',
+                表面处理: '发黑',
+                头型: '沉头',
+              },
+              price: 0.4,
+            },
           ],
         },
       ];
@@ -301,11 +580,60 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 6170 六角螺母，最常用螺母类型',
           tags: ['六角', 'GB6170'],
           specs: [
-            { size: 'M6', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M6', 材质: '碳钢', 表面处理: '镀锌', 标准: 'GB6170' }, price: 0.05 },
-            { size: 'M8', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M8', 材质: '碳钢', 表面处理: '镀锌', 标准: 'GB6170' }, price: 0.08 },
-            { size: 'M10', material: '不锈钢304', attrs: { 规格: 'M10', 材质: '不锈钢304', 标准: 'GB6170' }, price: 0.25 },
-            { size: 'M12', material: '碳钢', surface: '热镀锌', attrs: { 规格: 'M12', 材质: '碳钢', 表面处理: '热镀锌', 标准: 'GB6170' }, price: 0.18 },
-            { size: 'M16', material: '合金钢', surface: '达克罗', attrs: { 规格: 'M16', 材质: '合金钢', 表面处理: '达克罗', 标准: 'GB6170' }, price: 0.45 },
+            {
+              size: 'M6',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M6',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                标准: 'GB6170',
+              },
+              price: 0.05,
+            },
+            {
+              size: 'M8',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M8',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                标准: 'GB6170',
+              },
+              price: 0.08,
+            },
+            {
+              size: 'M10',
+              material: '不锈钢304',
+              attrs: { 规格: 'M10', 材质: '不锈钢304', 标准: 'GB6170' },
+              price: 0.25,
+            },
+            {
+              size: 'M12',
+              material: '碳钢',
+              surface: '热镀锌',
+              attrs: {
+                规格: 'M12',
+                材质: '碳钢',
+                表面处理: '热镀锌',
+                标准: 'GB6170',
+              },
+              price: 0.18,
+            },
+            {
+              size: 'M16',
+              material: '合金钢',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M16',
+                材质: '合金钢',
+                表面处理: '达克罗',
+                标准: 'GB6170',
+              },
+              price: 0.45,
+            },
           ],
         },
         {
@@ -313,10 +641,48 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 6177 法兰面螺母，自带垫圈效果',
           tags: ['法兰', 'GB6177'],
           specs: [
-            { size: 'M6', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M6', 材质: '碳钢', 表面处理: '镀锌', 标准: 'GB6177' }, price: 0.10 },
-            { size: 'M8', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M8', 材质: '碳钢', 表面处理: '镀锌', 标准: 'GB6177' }, price: 0.15 },
-            { size: 'M10', material: '不锈钢304', attrs: { 规格: 'M10', 材质: '不锈钢304', 标准: 'GB6177' }, price: 0.35 },
-            { size: 'M12', material: '碳钢', surface: '达克罗', attrs: { 规格: 'M12', 材质: '碳钢', 表面处理: '达克罗', 标准: 'GB6177' }, price: 0.30 },
+            {
+              size: 'M6',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M6',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                标准: 'GB6177',
+              },
+              price: 0.1,
+            },
+            {
+              size: 'M8',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M8',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                标准: 'GB6177',
+              },
+              price: 0.15,
+            },
+            {
+              size: 'M10',
+              material: '不锈钢304',
+              attrs: { 规格: 'M10', 材质: '不锈钢304', 标准: 'GB6177' },
+              price: 0.35,
+            },
+            {
+              size: 'M12',
+              material: '碳钢',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M12',
+                材质: '碳钢',
+                表面处理: '达克罗',
+                标准: 'GB6177',
+              },
+              price: 0.3,
+            },
           ],
         },
       ];
@@ -327,11 +693,60 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 97.1 平垫圈，保护工件表面',
           tags: ['平垫圈', 'GB97.1'],
           specs: [
-            { size: 'M6', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M6', 材质: '碳钢', 表面处理: '镀锌', 类型: '平垫圈' }, price: 0.02 },
-            { size: 'M8', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M8', 材质: '碳钢', 表面处理: '镀锌', 类型: '平垫圈' }, price: 0.03 },
-            { size: 'M10', material: '不锈钢304', attrs: { 规格: 'M10', 材质: '不锈钢304', 类型: '平垫圈' }, price: 0.08 },
-            { size: 'M12', material: '碳钢', surface: '达克罗', attrs: { 规格: 'M12', 材质: '碳钢', 表面处理: '达克罗', 类型: '平垫圈' }, price: 0.06 },
-            { size: 'M16', material: '碳钢', surface: '热镀锌', attrs: { 规格: 'M16', 材质: '碳钢', 表面处理: '热镀锌', 类型: '平垫圈' }, price: 0.12 },
+            {
+              size: 'M6',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M6',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                类型: '平垫圈',
+              },
+              price: 0.02,
+            },
+            {
+              size: 'M8',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M8',
+                材质: '碳钢',
+                表面处理: '镀锌',
+                类型: '平垫圈',
+              },
+              price: 0.03,
+            },
+            {
+              size: 'M10',
+              material: '不锈钢304',
+              attrs: { 规格: 'M10', 材质: '不锈钢304', 类型: '平垫圈' },
+              price: 0.08,
+            },
+            {
+              size: 'M12',
+              material: '碳钢',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M12',
+                材质: '碳钢',
+                表面处理: '达克罗',
+                类型: '平垫圈',
+              },
+              price: 0.06,
+            },
+            {
+              size: 'M16',
+              material: '碳钢',
+              surface: '热镀锌',
+              attrs: {
+                规格: 'M16',
+                材质: '碳钢',
+                表面处理: '热镀锌',
+                类型: '平垫圈',
+              },
+              price: 0.12,
+            },
           ],
         },
         {
@@ -339,10 +754,30 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'GB/T 93 弹簧垫圈，防松作用',
           tags: ['弹簧垫圈', 'GB93'],
           specs: [
-            { size: 'M6', material: '弹簧钢', attrs: { 规格: 'M6', 材质: '弹簧钢', 类型: '弹簧垫圈' }, price: 0.03 },
-            { size: 'M8', material: '弹簧钢', attrs: { 规格: 'M8', 材质: '弹簧钢', 类型: '弹簧垫圈' }, price: 0.05 },
-            { size: 'M10', material: '弹簧钢', attrs: { 规格: 'M10', 材质: '弹簧钢', 类型: '弹簧垫圈' }, price: 0.07 },
-            { size: 'M12', material: '弹簧钢', attrs: { 规格: 'M12', 材质: '弹簧钢', 类型: '弹簧垫圈' }, price: 0.10 },
+            {
+              size: 'M6',
+              material: '弹簧钢',
+              attrs: { 规格: 'M6', 材质: '弹簧钢', 类型: '弹簧垫圈' },
+              price: 0.03,
+            },
+            {
+              size: 'M8',
+              material: '弹簧钢',
+              attrs: { 规格: 'M8', 材质: '弹簧钢', 类型: '弹簧垫圈' },
+              price: 0.05,
+            },
+            {
+              size: 'M10',
+              material: '弹簧钢',
+              attrs: { 规格: 'M10', 材质: '弹簧钢', 类型: '弹簧垫圈' },
+              price: 0.07,
+            },
+            {
+              size: 'M12',
+              material: '弹簧钢',
+              attrs: { 规格: 'M12', 材质: '弹簧钢', 类型: '弹簧垫圈' },
+              price: 0.1,
+            },
           ],
         },
       ];
@@ -353,11 +788,65 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'DIN 976 全螺纹牙条，长度可裁切',
           tags: ['全螺纹', 'DIN976'],
           specs: [
-            { size: 'M6', length: '1000', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M6', 长度: '1000', 材质: '碳钢', 表面处理: '镀锌' }, price: 3.50 },
-            { size: 'M8', length: '1000', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M8', 长度: '1000', 材质: '碳钢', 表面处理: '镀锌' }, price: 5.00 },
-            { size: 'M10', length: '1000', material: '不锈钢304', attrs: { 规格: 'M10', 长度: '1000', 材质: '不锈钢304' }, price: 15.00 },
-            { size: 'M12', length: '2000', material: '碳钢', surface: '热镀锌', attrs: { 规格: 'M12', 长度: '2000', 材质: '碳钢', 表面处理: '热镀锌' }, price: 18.00 },
-            { size: 'M16', length: '2000', material: '合金钢', surface: '达克罗', attrs: { 规格: 'M16', 长度: '2000', 材质: '合金钢', 表面处理: '达克罗' }, price: 35.00 },
+            {
+              size: 'M6',
+              length: '1000',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M6',
+                长度: '1000',
+                材质: '碳钢',
+                表面处理: '镀锌',
+              },
+              price: 3.5,
+            },
+            {
+              size: 'M8',
+              length: '1000',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M8',
+                长度: '1000',
+                材质: '碳钢',
+                表面处理: '镀锌',
+              },
+              price: 5.0,
+            },
+            {
+              size: 'M10',
+              length: '1000',
+              material: '不锈钢304',
+              attrs: { 规格: 'M10', 长度: '1000', 材质: '不锈钢304' },
+              price: 15.0,
+            },
+            {
+              size: 'M12',
+              length: '2000',
+              material: '碳钢',
+              surface: '热镀锌',
+              attrs: {
+                规格: 'M12',
+                长度: '2000',
+                材质: '碳钢',
+                表面处理: '热镀锌',
+              },
+              price: 18.0,
+            },
+            {
+              size: 'M16',
+              length: '2000',
+              material: '合金钢',
+              surface: '达克罗',
+              attrs: {
+                规格: 'M16',
+                长度: '2000',
+                材质: '合金钢',
+                表面处理: '达克罗',
+              },
+              price: 35.0,
+            },
           ],
         },
         {
@@ -365,10 +854,52 @@ function getProductDefs(categoryName: string): ProductDef[] {
           description: 'DIN 975 双头牙条',
           tags: ['双头', 'DIN975'],
           specs: [
-            { size: 'M8', length: '1000', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M8', 长度: '1000', 材质: '碳钢', 表面处理: '镀锌' }, price: 6.00 },
-            { size: 'M10', length: '1000', material: '碳钢', surface: '镀锌', attrs: { 规格: 'M10', 长度: '1000', 材质: '碳钢', 表面处理: '镀锌' }, price: 8.50 },
-            { size: 'M12', length: '2000', material: '不锈钢316', attrs: { 规格: 'M12', 长度: '2000', 材质: '不锈钢316' }, price: 45.00 },
-            { size: 'M16', length: '3000', material: '碳钢', surface: '热镀锌', attrs: { 规格: 'M16', 长度: '3000', 材质: '碳钢', 表面处理: '热镀锌' }, price: 30.00 },
+            {
+              size: 'M8',
+              length: '1000',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M8',
+                长度: '1000',
+                材质: '碳钢',
+                表面处理: '镀锌',
+              },
+              price: 6.0,
+            },
+            {
+              size: 'M10',
+              length: '1000',
+              material: '碳钢',
+              surface: '镀锌',
+              attrs: {
+                规格: 'M10',
+                长度: '1000',
+                材质: '碳钢',
+                表面处理: '镀锌',
+              },
+              price: 8.5,
+            },
+            {
+              size: 'M12',
+              length: '2000',
+              material: '不锈钢316',
+              attrs: { 规格: 'M12', 长度: '2000', 材质: '不锈钢316' },
+              price: 45.0,
+            },
+            {
+              size: 'M16',
+              length: '3000',
+              material: '碳钢',
+              surface: '热镀锌',
+              attrs: {
+                规格: 'M16',
+                长度: '3000',
+                材质: '碳钢',
+                表面处理: '热镀锌',
+              },
+              price: 30.0,
+            },
           ],
         },
       ];

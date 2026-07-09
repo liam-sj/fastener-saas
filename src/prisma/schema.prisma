@@ -29,10 +29,15 @@ enum QuotationStatus {
   sent
   accepted
   rejected
+  superseded
 }
 
 enum OrderStatus {
   pending
+  accepted
+  sourcing
+  producing
+  ready_to_ship
   partial_delivered
   delivered
   completed
@@ -75,6 +80,70 @@ enum SettlementStatus {
 }
 
 // ============================================================
+// 新增枚举 — 订购到对账业务流程
+// ============================================================
+
+/// 订购单状态
+enum PurchaseRequestStatus {
+  pending
+  quoting
+  quoted
+  accepted
+  rejected
+  cancelled
+}
+
+/// 生产工单状态
+enum ProductionOrderStatus {
+  planning
+  in_progress
+  partial_done
+  done
+  cancelled
+}
+
+/// 工序状态
+enum ProcessStepStatus {
+  pending
+  in_progress
+  done
+  skipped
+}
+
+/// 工序阶段(阶段间顺序固定:备料→成型→螺纹→后处理)
+enum ProcessStage {
+  preparation
+  forming
+  threading
+  post_treatment
+}
+
+/// 工序类型
+enum ProcessStepType {
+  feeding
+  turning
+  milling
+  grinding
+  drilling
+  rolling
+  heat_treatment
+  surface_treatment
+}
+
+/// 工序加工方式
+enum ProcessStepMethod {
+  self
+  outsource
+}
+
+/// 采购单用途
+enum PurchasePurpose {
+  material
+  outsource
+  finished_goods
+}
+
+// ============================================================
 // Models
 // ============================================================
 
@@ -86,24 +155,28 @@ model Tenant {
   status    TenantStatus @default(active)
   createdAt DateTime     @default(now())
 
-  users           User[]
-  customers       Customer[]
-  suppliers       Supplier[]
-  categories      Category[]
-  products        Product[]
-  skus            Sku[]
-  quotations      Quotation[]
-  orders          Order[]
-  orderItems      OrderItem[]
-  orderRevisions  OrderRevision[]
-  purchaseOrders  PurchaseOrder[]
-  purchaseOrderItems PurchaseOrderItem[]
-  inboundOrders      InboundOrder[]
-  inboundOrderItems  InboundOrderItem[]
-  deliveryOrders  DeliveryOrder[]
-  deliveryItems   DeliveryItem[]
-  settlements     Settlement[]
-  sequences       Sequence[]
+  users                   User[]
+  customers               Customer[]
+  suppliers               Supplier[]
+  categories              Category[]
+  products                Product[]
+  skus                    Sku[]
+  quotations              Quotation[]
+  orders                  Order[]
+  orderItems              OrderItem[]
+  orderRevisions          OrderRevision[]
+  purchaseOrders          PurchaseOrder[]
+  purchaseOrderItems      PurchaseOrderItem[]
+  inboundOrders           InboundOrder[]
+  inboundOrderItems       InboundOrderItem[]
+  deliveryOrders          DeliveryOrder[]
+  deliveryItems           DeliveryItem[]
+  settlements             Settlement[]
+  sequences               Sequence[]
+  purchaseRequests        PurchaseRequest[]
+  purchaseRequestItems    PurchaseRequestItem[]
+  productionOrders        ProductionOrder[]
+  processSteps            ProcessStep[]
 
   @@map("tenants")
 }
@@ -134,9 +207,10 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id])
-  quotations  Quotation[]
-  orders      Order[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  quotations       Quotation[]
+  orders           Order[]
+  purchaseRequests PurchaseRequest[]
 
   @@map("customers")
 }
@@ -214,44 +288,50 @@ model Sku {
 }
 
 model Quotation {
-  id          Int              @id @default(autoincrement())
-  tenantId    Int
-  quotationNo String           @unique
-  customerId  Int
-  items       Json
-  totalAmount Decimal          @db.Decimal(12, 2)
-  status      QuotationStatus  @default(draft)
-  validUntil  DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id                 Int              @id @default(autoincrement())
+  tenantId           Int
+  quotationNo        String           @unique
+  purchaseRequestId  Int?
+  version            Int              @default(1)
+  customerId         Int
+  items              Json
+  totalAmount        Decimal          @db.Decimal(12, 2)
+  status             QuotationStatus  @default(draft)
+  validUntil         DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  customer Customer @relation(fields: [customerId], references: [id])
-  orders   Order[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  customer         Customer          @relation(fields: [customerId], references: [id])
+  purchaseRequest  PurchaseRequest?  @relation(fields: [purchaseRequestId], references: [id])
+  orders           Order[]
 
+  @@unique([purchaseRequestId, version])
   @@index([tenantId, createdAt])
   @@map("quotations")
 }
 
 model Order {
-  id          Int         @id @default(autoincrement())
-  tenantId    Int
-  orderNo     String      @unique
-  quotationId Int?
-  customerId  Int
-  totalAmount Decimal     @db.Decimal(12, 2)
-  paidAmount  Decimal     @default(0) @db.Decimal(12, 2)
-  status      OrderStatus @default(pending)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                 Int         @id @default(autoincrement())
+  tenantId           Int
+  orderNo            String      @unique
+  purchaseRequestId  Int?
+  quotationId        Int?
+  customerId         Int
+  totalAmount        Decimal     @db.Decimal(12, 2)
+  paidAmount         Decimal     @default(0) @db.Decimal(12, 2)
+  status             OrderStatus @default(accepted)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
-  tenant          Tenant           @relation(fields: [tenantId], references: [id])
-  quotation       Quotation?       @relation(fields: [quotationId], references: [id])
-  customer        Customer         @relation(fields: [customerId], references: [id])
-  items           OrderItem[]
-  revisions       OrderRevision[]
-  deliveryOrders  DeliveryOrder[]
-  settlements     Settlement[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  quotation        Quotation?        @relation(fields: [quotationId], references: [id])
+  purchaseRequest  PurchaseRequest?  @relation(fields: [purchaseRequestId], references: [id])
+  customer         Customer          @relation(fields: [customerId], references: [id])
+  items            OrderItem[]
+  revisions        OrderRevision[]
+  deliveryOrders   DeliveryOrder[]
+  settlements      Settlement[]
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
@@ -275,11 +355,12 @@ model OrderItem {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  tenant        Tenant          @relation(fields: [tenantId], references: [id])
-  order         Order           @relation(fields: [orderId], references: [id])
-  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
-  deliveryItems DeliveryItem[]
-  settlements   Settlement[]
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  order           Order           @relation(fields: [orderId], references: [id])
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  productionOrder ProductionOrder?
+  deliveryItems   DeliveryItem[]
+  settlements     Settlement[]
 
   @@index([tenantId, orderId])
   @@index([tenantId, skuCode])
@@ -303,24 +384,31 @@ model OrderRevision {
 }
 
 model PurchaseOrder {
-  id            Int                  @id @default(autoincrement())
-  tenantId      Int
-  purchaseNo    String               @unique
-  supplierId    Int
-  totalAmount   Decimal              @db.Decimal(12, 2)
-  status        PurchaseOrderStatus  @default(pending)
-  expectedDate  DateTime?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id                Int                  @id @default(autoincrement())
+  tenantId          Int
+  purchaseNo        String               @unique
+  supplierId        Int
+  totalAmount       Decimal              @db.Decimal(12, 2)
+  status            PurchaseOrderStatus  @default(pending)
+  expectedDate      DateTime?
+  purpose           PurchasePurpose      @default(finished_goods)
+  orderItemId       Int?
+  processStepId     Int?
+  productionOrderId Int?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  tenant        Tenant              @relation(fields: [tenantId], references: [id])
-  supplier      Supplier            @relation(fields: [supplierId], references: [id])
-  items         PurchaseOrderItem[]
-  orderItems    OrderItem[]
-  inboundOrders InboundOrder[]
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  supplier       Supplier       @relation(fields: [supplierId], references: [id])
+  items          PurchaseOrderItem[]
+  orderItems     OrderItem[]
+  inboundOrders  InboundOrder[]
+  processStep    ProcessStep?   @relation(fields: [processStepId], references: [id])
+  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id])
 
   @@index([tenantId, createdAt])
   @@index([tenantId, supplierId])
+  @@index([tenantId, purpose])
   @@map("purchase_orders")
 }
 
@@ -446,4 +534,108 @@ model Sequence {
 
   @@unique([tenantId, prefix, dateStr])
   @@map("sequences")
+}
+
+// ============================================================
+// 新增模型 — 订购到对账业务流程
+// ============================================================
+
+/// 订购单 — 客户原始需求入口
+model PurchaseRequest {
+  id            Int                    @id @default(autoincrement())
+  tenantId      Int
+  requestNo     String                 @unique
+  customerId    Int
+  status        PurchaseRequestStatus  @default(pending)
+  expectedDate  DateTime?
+  remark        String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id])
+  customer Customer                @relation(fields: [customerId], references: [id])
+  items    PurchaseRequestItem[]
+  quotations Quotation[]
+  orders   Order[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("purchase_requests")
+}
+
+/// 订购单条目
+model PurchaseRequestItem {
+  id                  Int     @id @default(autoincrement())
+  tenantId            Int
+  purchaseRequestId   Int
+  productName         String
+  specText            String?
+  attributes          Json?
+  qty                 Int
+  targetPrice         Decimal?  @db.Decimal(10, 2)
+  skuId               Int?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  purchaseRequest  PurchaseRequest  @relation(fields: [purchaseRequestId], references: [id])
+
+  @@index([tenantId, purchaseRequestId])
+  @@map("purchase_request_items")
+}
+
+/// 生产工单 — 定制件的生产项目(1:1 关联 OrderItem)
+model ProductionOrder {
+  id                 Int                  @id @default(autoincrement())
+  tenantId           Int
+  productionNo       String               @unique
+  orderItemId        Int                  @unique
+  qty                Int
+  completedQty       Int                  @default(0)
+  status             ProductionOrderStatus @default(planning)
+  plannedFinishDate  DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  orderItem   OrderItem     @relation(fields: [orderItemId], references: [id])
+  processSteps ProcessStep[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("production_orders")
+}
+
+/// 工序 — 生产工单内的工序链
+model ProcessStep {
+  id                  Int                @id @default(autoincrement())
+  tenantId            Int
+  productionOrderId   Int
+  sequence            Int
+  stage               ProcessStage
+  stepType            ProcessStepType
+  name                String
+  type                ProcessStepMethod  @default(self)
+  supplierId          Int?
+  purchaseOrderId     Int?
+  surfaceMethod       String?
+  status              ProcessStepStatus  @default(pending)
+  plannedQty          Int                @default(0)
+  actualQty           Int                @default(0)
+  lossQty             Int                @default(0)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  remark              String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  purchaseOrders  PurchaseOrder[]
+
+  @@index([tenantId, productionOrderId])
+  @@index([tenantId, status])
+  @@unique([productionOrderId, sequence])
+  @@map("process_steps")
 }

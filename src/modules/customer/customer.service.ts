@@ -52,7 +52,10 @@ export class CustomerService {
   async update(id: number, dto: UpdateCustomerDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     await this.findOne(id);
-    return this.prisma.customer.updateMany({ where: { id, tenantId }, data: dto });
+    return this.prisma.customer.updateMany({
+      where: { id, tenantId },
+      data: dto,
+    });
   }
 
   async remove(id: number) {

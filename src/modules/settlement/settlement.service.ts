@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { ReconcileDto } from './dto/reconcile.dto';
@@ -162,6 +166,21 @@ export class SettlementService {
         where: { id: dto.orderId },
         data: { paidAmount: newPaidAmount },
       });
+
+      // 对账联动: paidAmount >= totalAmount -> completed
+      const updatedOrder = await tx.order.findFirst({
+        where: { id: dto.orderId, tenantId },
+      });
+      if (updatedOrder && newPaidAmount >= Number(updatedOrder.totalAmount)) {
+        await tx.order.updateMany({
+          where: {
+            id: dto.orderId,
+            tenantId,
+            status: { in: ['delivered', 'partial_delivered'] },
+          },
+          data: { status: 'completed' },
+        });
+      }
 
       return { settlements: results, totalReconciled };
     });

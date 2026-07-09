@@ -24,8 +24,15 @@ export class UserService {
     const [list, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        select: { id: true, username: true, role: true, tenantId: true, createdAt: true },
-        skip: (page - 1) * pageSize, take: pageSize,
+        select: {
+          id: true,
+          username: true,
+          role: true,
+          tenantId: true,
+          createdAt: true,
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
         orderBy: { createdAt: 'desc' as const },
       }),
       this.prisma.user.count({ where }),
@@ -37,7 +44,13 @@ export class UserService {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     return this.prisma.user.findFirst({
       where: { id, tenantId },
-      select: { id: true, username: true, role: true, tenantId: true, createdAt: true },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        tenantId: true,
+        createdAt: true,
+      },
     });
   }
 
@@ -46,10 +59,18 @@ export class UserService {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     return this.prisma.user.create({
       data: {
-        tenantId, username: dto.username, password: hashedPassword,
+        tenantId,
+        username: dto.username,
+        password: hashedPassword,
         role: dto.role as any,
       },
-      select: { id: true, username: true, role: true, tenantId: true, createdAt: true },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        tenantId: true,
+        createdAt: true,
+      },
     });
   }
 
@@ -64,10 +85,15 @@ export class UserService {
 
     // 若降级他人导致租户无 admin，拒绝
     if (dto.role && dto.role !== 'admin') {
-      const target = await this.prisma.user.findFirst({ where: { id, tenantId } });
+      const target = await this.prisma.user.findFirst({
+        where: { id, tenantId },
+      });
       if (target?.role === 'admin') {
-        const adminCount = await this.prisma.user.count({ where: { tenantId, role: 'admin' } });
-        if (adminCount <= 1) throw new BadRequestException('租户至少需保留一个管理员');
+        const adminCount = await this.prisma.user.count({
+          where: { tenantId, role: 'admin' },
+        });
+        if (adminCount <= 1)
+          throw new BadRequestException('租户至少需保留一个管理员');
       }
     }
 

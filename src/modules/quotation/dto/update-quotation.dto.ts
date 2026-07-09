@@ -3,5 +3,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateQuotationDto {
   @ApiPropertyOptional({ description: '客户ID' })
-  @IsOptional() @IsInt() customerId?: number;
+  @IsOptional()
+  @IsInt()
+  customerId?: number;
 }

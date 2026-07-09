@@ -37,14 +37,20 @@ export function div(a: string | number | Decimal, b: number): number {
 /**
  * 加法：a + b
  */
-export function add(a: string | number | Decimal, b: string | number | Decimal): number {
+export function add(
+  a: string | number | Decimal,
+  b: string | number | Decimal,
+): number {
   return new Decimal(a).plus(b).toDecimalPlaces(2).toNumber();
 }
 
 /**
  * 减法：a - b
  */
-export function sub(a: string | number | Decimal, b: string | number | Decimal): number {
+export function sub(
+  a: string | number | Decimal,
+  b: string | number | Decimal,
+): number {
   return new Decimal(a).minus(b).toDecimalPlaces(2).toNumber();
 }
 

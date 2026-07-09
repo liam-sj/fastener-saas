@@ -3,9 +3,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSkuDto {
   @ApiProperty({ description: '属性' })
-  @IsObject() attributes: Record<string, string>;
+  @IsObject()
+  attributes: Record<string, string>;
   @ApiProperty({ description: '单价' })
-  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) price: number;
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  price: number;
   @ApiPropertyOptional({ description: '库存' })
-  @IsOptional() @IsInt() @Min(0) stock?: number = 0;
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  stock?: number = 0;
 }

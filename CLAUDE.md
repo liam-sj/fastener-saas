@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-tenant SaaS ERP for the fastener (紧固件) industry. Business flow: **quotation → order → purchase → inbound → delivery → settlement**.
+Multi-tenant SaaS ERP for the fastener (紧固件) industry. Business flow: **purchase request → quotation (multi-version) → order → production (custom items) → delivery → settlement**.
 
 ## Commands
 
@@ -53,16 +53,52 @@ Both `PrismaModule` and `CommonModule` are `@Global()`, so every module can inje
 
 ### Document Number Generation
 
-`generateNo(prisma, prefix, tenantId)` in `src/common/utils/no-generator.ts` produces numbers like `SO-20260707-001`. Prefixes: `BJ` (quotation), `SO` (order), `PO` (purchase), `IN` (inbound), `DO` (delivery). Format: `{prefix}-{YYYYMMDD}-{3-digit-seq}`.
+`generateNo(prisma, prefix, tenantId)` in `src/common/utils/no-generator.ts` produces numbers like `SO-20260707-001`. Prefixes: `PR` (purchase request), `BJ` (quotation), `SO` (order), `PO` (purchase), `MO` (production order), `IN` (inbound), `DO` (delivery). Format: `{prefix}-{YYYYMMDD}-{3-digit-seq}`.
 
 ### Business Flow (order.service.ts)
+
+The full business flow is: **PurchaseRequest → Quotation (multi-version) → Order → ProductionOrder/ProcessStep (custom items) → DeliveryOrder → Settlement**.
 
 When creating an order:
 1. For each line item, check if the SKU has enough stock.
 2. **stock**: deduct stock immediately, set `source = 'stock'`.
-3. **custom** (insufficient stock): set `source = 'custom'` — later triggers purchase order generation.
+3. **custom** (insufficient stock): set `source = 'custom'` — later triggers production order creation.
 4. Order revisions (`add`/`modify`/`remove`) are tracked in `order_revisions` with `beforeData`/`afterData` snapshots.
 5. Removing a `stock` item restores the unreleased quantity back to inventory.
+
+### Order State Machine
+
+```
+accepted → sourcing → producing → ready_to_ship → partial_delivered → delivered → completed
+                                                                        ↘ cancelled (any stage)
+```
+
+- Orders with all stock items skip to `ready_to_ship` directly.
+- Orders with custom items go through `sourcing`/`producing` as production orders progress.
+- `ProductionService.syncOrderStatus()` auto-advances order status when production orders complete.
+- `SettlementService.reconcile()` auto-transitions to `completed` when `paidAmount >= totalAmount`.
+
+### Production Flow (production.service.ts)
+
+Custom items (`source = 'custom'`) get a 1:1 `ProductionOrder` with a chain of `ProcessStep` records:
+- 4 stages: `preparation` → `forming` → `threading` → `post_treatment` (fixed order)
+- 8 step types: `feeding`, `turning`, `milling`, `grinding`, `drilling`, `rolling`, `heat_treatment`, `surface_treatment`
+- Steps are created on-demand (not all 8), validated for sequence continuity and stage ordering.
+- `completedQty` on the last step becomes the shippable quantity for custom items.
+
+### Delivery Validation (delivery.service.ts)
+
+- Stock items: shippable = `qty - deliveredQty`
+- Custom items: shippable = `ProductionOrder.completedQty - already delivered`
+- Order must be in `ready_to_ship` or `partial_delivered` status to create deliveries.
+- Concurrent shipping uses atomic `updateMany` with `deliveredQty` condition to prevent overshipping.
+
+### Purchase Order Purposes
+
+Purchase orders have a `purpose` field:
+- `material`: buying raw materials for a process step (linked via `processStepId`)
+- `outsource`: outsourcing a processing step (linked via `processStepId`)
+- `finished_goods`: buying finished goods to fulfill an order item (linked via `orderItemId`)
 
 ### Prisma Adapter
 

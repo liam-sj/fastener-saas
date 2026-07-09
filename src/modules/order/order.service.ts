@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
@@ -17,7 +21,12 @@ export class OrderService {
     private readonly stockService: StockService,
   ) {}
 
-  async findAll(query: { page?: number; pageSize?: number; status?: string; customerId?: number }) {
+  async findAll(query: {
+    page?: number;
+    pageSize?: number;
+    status?: string;
+    customerId?: number;
+  }) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const { page = 1, status, customerId } = query;
     const pageSize = Math.min(query.pageSize ?? 20, 100);
@@ -27,8 +36,10 @@ export class OrderService {
 
     const [list, total] = await Promise.all([
       this.prisma.order.findMany({
-        where, include: { customer: true, items: true },
-        skip: (page - 1) * pageSize, take: pageSize,
+        where,
+        include: { customer: true, items: true },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
         orderBy: { createdAt: 'desc' as const },
       }),
       this.prisma.order.count({ where }),
@@ -40,7 +51,11 @@ export class OrderService {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     const order = await this.prisma.order.findFirst({
       where: { id, tenantId },
-      include: { customer: true, items: true, revisions: { orderBy: { createdAt: 'desc' as const } } },
+      include: {
+        customer: true,
+        items: true,
+        revisions: { orderBy: { createdAt: 'desc' as const } },
+      },
     });
     if (!order) throw new NotFoundException('订单不存在');
     return order;
@@ -51,17 +66,34 @@ export class OrderService {
 
     return this.prisma.$transaction(async (tx) => {
       const orderNo = await generateNo(tx as any, 'SO', tenantId);
-      const items = await this.stockService.batchDeduct(tx, tenantId, dto.items);
+      const items = await this.stockService.batchDeduct(
+        tx,
+        tenantId,
+        dto.items,
+      );
       const totalAmount = sum(items.map((i) => mul(i.price, i.qty)));
+
+      // 判定是否有定制件:全现货且库存够 -> ready_to_ship,否则 accepted
+      const hasCustom = items.some((i) => i.source === 'custom');
+      const initialStatus = hasCustom ? 'accepted' : 'ready_to_ship';
 
       return tx.order.create({
         data: {
-          tenantId, orderNo, customerId: dto.customerId, quotationId: dto.quotationId,
+          tenantId,
+          orderNo,
+          customerId: dto.customerId,
+          quotationId: dto.quotationId,
           totalAmount,
+          status: initialStatus as any,
           items: {
             create: items.map((item) => ({
-              tenantId, productName: item.productName, skuCode: item.skuCode,
-              skuAttrs: item.skuAttrs ?? undefined, price: item.price, qty: item.qty, source: item.source,
+              tenantId,
+              productName: item.productName,
+              skuCode: item.skuCode,
+              skuAttrs: item.skuAttrs ?? undefined,
+              price: item.price,
+              qty: item.qty,
+              source: item.source,
               costPrice: item.costPrice,
             })) as any,
           },
@@ -79,8 +111,13 @@ export class OrderService {
         where: { id: orderId, tenantId },
       });
       if (!order) throw new NotFoundException('订单不存在');
-      if (order.status === 'completed' || order.status === 'cancelled') {
-        throw new BadRequestException('订单已完成或已取消，无法变更');
+      if (
+        order.status === 'completed' ||
+        order.status === 'cancelled' ||
+        order.status === 'delivered' ||
+        order.status === 'partial_delivered'
+      ) {
+        throw new BadRequestException('订单已进入发货/完成/取消阶段,无法变更');
       }
 
       const sku = await tx.sku.findFirst({
@@ -99,19 +136,29 @@ export class OrderService {
 
       const newItem = await tx.orderItem.create({
         data: {
-          tenantId, orderId,
+          tenantId,
+          orderId,
           productName: sku.product.name,
           skuCode: sku.skuCode,
           skuAttrs: sku.attributes ?? undefined,
-          price: dto.price, qty: dto.qty, source,
+          price: dto.price,
+          qty: dto.qty,
+          source,
           costPrice,
         } as any,
       });
 
       await tx.orderRevision.create({
         data: {
-          tenantId, orderId, type: 'add',
-          afterData: { itemId: newItem.id, skuCode: sku.skuCode, qty: dto.qty, price: dto.price },
+          tenantId,
+          orderId,
+          type: 'add',
+          afterData: {
+            itemId: newItem.id,
+            skuCode: sku.skuCode,
+            qty: dto.qty,
+            price: dto.price,
+          },
         },
       });
 
@@ -141,8 +188,12 @@ export class OrderService {
 
       await tx.orderRevision.create({
         data: {
-          tenantId, orderId, type: 'modify',
-          beforeData, afterData: { qty: dto.qty, price: dto.price }, reason: dto.reason,
+          tenantId,
+          orderId,
+          type: 'modify',
+          beforeData,
+          afterData: { qty: dto.qty, price: dto.price },
+          reason: dto.reason,
         },
       });
 
@@ -174,8 +225,15 @@ export class OrderService {
 
       await tx.orderRevision.create({
         data: {
-          tenantId, orderId, type: 'remove',
-          beforeData: { itemId, skuCode: orderItem.skuCode, qty: orderItem.qty }, reason,
+          tenantId,
+          orderId,
+          type: 'remove',
+          beforeData: {
+            itemId,
+            skuCode: orderItem.skuCode,
+            qty: orderItem.qty,
+          },
+          reason,
         },
       });
 
@@ -183,7 +241,11 @@ export class OrderService {
     });
   }
 
-  private async recalculateTotalInTx(tx: any, tenantId: number, orderId: number) {
+  private async recalculateTotalInTx(
+    tx: any,
+    tenantId: number,
+    orderId: number,
+  ) {
     const items = await tx.orderItem.findMany({ where: { orderId, tenantId } });
     const total = sum(items.map((i: any) => mul(i.price, i.qty)));
     await tx.order.update({
@@ -193,7 +255,17 @@ export class OrderService {
   }
 
   private readonly ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-    pending: ['partial_delivered', 'delivered', 'cancelled'],
+    pending: [
+      'accepted',
+      'sourcing',
+      'producing',
+      'ready_to_ship',
+      'cancelled',
+    ],
+    accepted: ['sourcing', 'producing', 'ready_to_ship', 'cancelled'],
+    sourcing: ['producing', 'ready_to_ship', 'cancelled'],
+    producing: ['ready_to_ship', 'cancelled'],
+    ready_to_ship: ['partial_delivered', 'cancelled'],
     partial_delivered: ['delivered', 'cancelled'],
     delivered: ['completed'],
     completed: [],
@@ -209,7 +281,9 @@ export class OrderService {
 
     const allowed = this.ORDER_TRANSITIONS[order.status];
     if (!allowed || !allowed.includes(status)) {
-      throw new BadRequestException(`订单不能从 ${order.status} 转为 ${status}`);
+      throw new BadRequestException(
+        `订单不能从 ${order.status} 转为 ${status}`,
+      );
     }
 
     await this.prisma.order.updateMany({
@@ -273,9 +347,7 @@ export class OrderService {
     const totalCost = sum(itemBreakdown.map((i) => i.cost));
     const totalProfit = sub(totalRevenue, totalCost);
     const profitMargin =
-      totalRevenue > 0
-        ? mul(totalProfit / totalRevenue, 100)
-        : 0;
+      totalRevenue > 0 ? mul(totalProfit / totalRevenue, 100) : 0;
 
     return {
       orderId: order.id,
@@ -286,7 +358,8 @@ export class OrderService {
       totalProfit,
       profitMargin,
       items: itemBreakdown,
-      unknownCostCount: itemBreakdown.filter((i) => i.costPrice === null).length,
+      unknownCostCount: itemBreakdown.filter((i) => i.costPrice === null)
+        .length,
     };
   }
 }

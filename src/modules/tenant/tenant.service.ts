@@ -25,7 +25,9 @@ export class TenantService {
 
     const [list, total] = await Promise.all([
       this.prisma.tenant.findMany({
-        where, skip: (page - 1) * pageSize, take: pageSize,
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.tenant.count({ where }),
@@ -35,7 +37,8 @@ export class TenantService {
 
   async findOne(id: number) {
     const currentTenantId = this.tenantCtx.getTenantIdOrThrow();
-    if (id !== currentTenantId) throw new ForbiddenException('无权访问其他租户');
+    if (id !== currentTenantId)
+      throw new ForbiddenException('无权访问其他租户');
     return this.prisma.tenant.findUnique({ where: { id } });
   }
 
@@ -47,13 +50,15 @@ export class TenantService {
 
   async update(id: number, dto: UpdateTenantDto) {
     const currentTenantId = this.tenantCtx.getTenantIdOrThrow();
-    if (id !== currentTenantId) throw new ForbiddenException('无权修改其他租户');
+    if (id !== currentTenantId)
+      throw new ForbiddenException('无权修改其他租户');
     return this.prisma.tenant.update({ where: { id }, data: dto });
   }
 
   async remove(id: number) {
     const currentTenantId = this.tenantCtx.getTenantIdOrThrow();
-    if (id !== currentTenantId) throw new ForbiddenException('无权删除其他租户');
+    if (id !== currentTenantId)
+      throw new ForbiddenException('无权删除其他租户');
     await this.prisma.tenant.delete({ where: { id } });
   }
 }

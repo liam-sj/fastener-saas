@@ -52,7 +52,10 @@ export class SupplierService {
   async update(id: number, dto: UpdateSupplierDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     await this.findOne(id);
-    return this.prisma.supplier.updateMany({ where: { id, tenantId }, data: dto });
+    return this.prisma.supplier.updateMany({
+      where: { id, tenantId },
+      data: dto,
+    });
   }
 
   async remove(id: number) {

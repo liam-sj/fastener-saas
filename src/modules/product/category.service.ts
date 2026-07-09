@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { CreateCategoryDto } from './dto/category/create-category.dto';
@@ -28,7 +32,9 @@ export class CategoryService {
 
   async findOne(id: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const cat = await this.prisma.category.findFirst({ where: { id, tenantId } });
+    const cat = await this.prisma.category.findFirst({
+      where: { id, tenantId },
+    });
     if (!cat) throw new NotFoundException('分类不存在');
     return cat;
   }
@@ -41,7 +47,10 @@ export class CategoryService {
   async update(id: number, dto: UpdateCategoryDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
     await this.findOne(id);
-    return this.prisma.category.updateMany({ where: { id, tenantId }, data: dto });
+    return this.prisma.category.updateMany({
+      where: { id, tenantId },
+      data: dto,
+    });
   }
 
   async remove(id: number) {

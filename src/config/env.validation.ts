@@ -1,5 +1,11 @@
 import { plainToInstance } from 'class-transformer';
-import { IsString, MinLength, IsOptional, IsInt, validateSync } from 'class-validator';
+import {
+  IsString,
+  MinLength,
+  IsOptional,
+  IsInt,
+  validateSync,
+} from 'class-validator';
 
 export class EnvConfig {
   @IsString()
@@ -38,7 +44,9 @@ export function validate(raw: Record<string, unknown>): EnvConfig {
   if (errors.length > 0) {
     const messages = errors
       .map((e) => {
-        const constraints = e.constraints ? Object.values(e.constraints).join(', ') : 'unknown';
+        const constraints = e.constraints
+          ? Object.values(e.constraints).join(', ')
+          : 'unknown';
         return `  - ${e.property}: ${constraints}`;
       })
       .join('\n');
@@ -47,4 +55,3 @@ export function validate(raw: Record<string, unknown>): EnvConfig {
 
   return config;
 }
-

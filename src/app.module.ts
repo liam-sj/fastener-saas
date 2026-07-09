@@ -9,9 +9,11 @@ import { UserModule } from './modules/user/user.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
 import { ProductModule } from './modules/product/product.module';
+import { PurchaseRequestModule } from './modules/purchase-request/purchase-request.module';
 import { QuotationModule } from './modules/quotation/quotation.module';
 import { OrderModule } from './modules/order/order.module';
 import { PurchaseModule } from './modules/purchase/purchase.module';
+import { ProductionModule } from './modules/production/production.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettlementModule } from './modules/settlement/settlement.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
@@ -33,9 +35,11 @@ import { validate } from './config/env.validation';
     CustomerModule,
     SupplierModule,
     ProductModule,
+    PurchaseRequestModule,
     QuotationModule,
     OrderModule,
     PurchaseModule,
+    ProductionModule,
     InventoryModule,
     SettlementModule,
   ],

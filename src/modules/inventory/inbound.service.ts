@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { generateNo } from '../../common/utils/no-generator';
@@ -76,7 +80,8 @@ export class InboundService {
         include: { items: true },
       });
       if (!inbound) throw new NotFoundException('入库单不存在');
-      if (inbound.status !== 'pending') throw new BadRequestException('仅待确认状态可入库');
+      if (inbound.status !== 'pending')
+        throw new BadRequestException('仅待确认状态可入库');
 
       // 批量预查所有 SKU，避免 N+1
       const skuCodes = inbound.items.map((i) => i.skuCode);

@@ -18,7 +18,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // 非 HTTP 上下文（WebSocket/gRPC/定时任务）不处理
     if (host.getType() !== 'http') {
       if (exception instanceof Error) {
-        this.logger.error(`[${host.getType()}] ${exception.message}`, exception.stack);
+        this.logger.error(
+          `[${host.getType()}] ${exception.message}`,
+          exception.stack,
+        );
       }
       return;
     }
@@ -36,8 +39,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = typeof res === 'string' ? res : (res as any).message || message;
       if (Array.isArray(message)) message = message.join('; ');
 
-      if (httpStatus === HttpStatus.BAD_REQUEST) code = ErrorCode.VALIDATION_ERROR;
-      else if (httpStatus === HttpStatus.UNAUTHORIZED) code = ErrorCode.UNAUTHORIZED;
+      if (httpStatus === HttpStatus.BAD_REQUEST)
+        code = ErrorCode.VALIDATION_ERROR;
+      else if (httpStatus === HttpStatus.UNAUTHORIZED)
+        code = ErrorCode.UNAUTHORIZED;
       else if (httpStatus === HttpStatus.NOT_FOUND) code = ErrorCode.NOT_FOUND;
       else code = ErrorCode.BUSINESS_ERROR;
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
@@ -53,7 +58,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         httpStatus = HttpStatus.BAD_REQUEST;
         code = ErrorCode.BUSINESS_ERROR;
         message = '数据操作失败';
-        this.logger.error(`Prisma error [${exception.code}]: ${exception.message}`, exception.stack);
+        this.logger.error(
+          `Prisma error [${exception.code}]: ${exception.message}`,
+          exception.stack,
+        );
       }
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);

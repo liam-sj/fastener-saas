@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../common/services/tenant-context.service';
 import { CreateSkuDto } from './dto/sku/create-sku.dto';
@@ -45,7 +49,7 @@ export class SkuService {
 
   async create(productId: number, dto: CreateSkuDto) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    const attributes = dto.attributes as Record<string, string>;
+    const attributes = dto.attributes;
     const skuCode = await this.generateSkuCode(productId, tenantId, attributes);
 
     const existing = await this.prisma.sku.findFirst({
@@ -55,7 +59,9 @@ export class SkuService {
 
     return this.prisma.sku.create({
       data: {
-        productId, tenantId, skuCode,
+        productId,
+        tenantId,
+        skuCode,
         attributes: dto.attributes,
         price: dto.price,
         stock: dto.stock ?? 0,
@@ -69,11 +75,16 @@ export class SkuService {
       where: { id: skuId, productId, tenantId },
     });
     if (!sku) throw new NotFoundException('SKU 不存在');
-    return this.prisma.sku.updateMany({ where: { id: skuId, tenantId }, data: dto });
+    return this.prisma.sku.updateMany({
+      where: { id: skuId, tenantId },
+      data: dto,
+    });
   }
 
   async remove(productId: number, skuId: number) {
     const tenantId = this.tenantCtx.getTenantIdOrThrow();
-    await this.prisma.sku.deleteMany({ where: { id: skuId, productId, tenantId } });
+    await this.prisma.sku.deleteMany({
+      where: { id: skuId, productId, tenantId },
+    });
   }
 }
